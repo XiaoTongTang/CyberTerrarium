@@ -159,6 +159,7 @@ class SimulationController:
             "x": org.regs[Organism.DP_X],
             "y": org.regs[Organism.DP_Y],
         })
+        self.population.recycle(org.org_id)
 
     def _rebuild_alive_cache(self) -> None:
         alive = self.population.get_alive_list()
@@ -216,10 +217,9 @@ class SimulationController:
         self.world.grid = snapshot["world_grid"].copy()
         self.world.signal_life = snapshot["world_signal"].copy()
         self.world.nutrient_life = snapshot["world_nutrient"].copy()
-        # 重建种群（简化实现）
-        for org in self.population.pool:
-            if org is not None:
-                org.alive = False
+        # 重建种群
+        for i in range(self.population.max_cap):
+            self.population.pool[i] = None
         self.population.free_ids = list(range(self.population.max_cap - 1, -1, -1))
         for org_data in snapshot["organisms"]:
             self.population.spawn(

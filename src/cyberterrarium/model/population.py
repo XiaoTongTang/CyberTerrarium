@@ -31,6 +31,11 @@ class Population:
         self.pool[org_id] = org
         return org_id
 
+    def recycle(self, org_id: int) -> None:
+        """回收死亡生物的池槽位，使其ID可被重新分配。"""
+        self.pool[org_id] = None
+        self.free_ids.append(org_id)
+
     def get_alive_list(self) -> list[Organism]:
         return [org for org in self.pool if org is not None and org.alive]
 
@@ -40,4 +45,4 @@ class Population:
 
     @property
     def is_full(self) -> bool:
-        return len(self.free_ids) == 0
+        return self.alive_count >= self.max_cap
