@@ -4,7 +4,7 @@ import random
 
 import numpy as np
 
-from cyberterrarium.model.config import AGE_LIMIT, E_BIRTH, NUTRIENT_SPAWN_RATE
+from cyberterrarium.model.config import AGE_LIMIT, E_BIRTH, NUTRIENT_LIFE, NUTRIENT_SPAWN_RATE
 from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -40,19 +40,26 @@ class SimulationController:
         self.execute_phase_3()
 
     def execute_phase_1(self) -> None:
-        """物理与环境阶段：信号衰减 + 营养生成"""
+        """物理与环境阶段：信号衰减 + 营养衰减 + 营养生成"""
         # 信号衰减
         mask = self.world.signal_life > 0
         self.world.signal_life[mask] -= 1
         expired = (self.world.signal_life == 0) & (self.world.grid == World.SIGNAL)
         self.world.grid[expired] = World.EMPTY
 
-        # 营养生成
-        empty_mask = self.world.grid == World.EMPTY
-        spawn_mask = np_random_mask(empty_mask, NUTRIENT_SPAWN_RATE)
-        self.world.grid[spawn_mask] = World.NUTRIENT
+        # 营养衰减
+        nmask = self.world.nutrient_life > 0
+        self.world.nutrient_life[nmask] -= 1
+        n_expired = (self.world.nutrient_life == 0) & (self.world.grid == World.NUTRIENT)
+        self.world.grid[n_expired] = World.EMPTY
 
+        # 营养生成：每隔 NUTRIENT_LIFE 个Tick触发一次
         self.current_tick += 1
+        if self.current_tick % NUTRIENT_LIFE == 0:
+            empty_mask = self.world.grid == World.EMPTY
+            spawn_mask = np_random_mask(empty_mask, NUTRIENT_SPAWN_RATE)
+            self.world.grid[spawn_mask] = World.NUTRIENT
+            self.world.nutrient_life[spawn_mask] = NUTRIENT_LIFE
 
     def execute_phase_2(self) -> None:
         """生命调度阶段：洗牌 + 衰老 + 年龄判死 + 扣税判死 + 执行指令"""
@@ -106,7 +113,9 @@ class SimulationController:
 
     def _kill_and_corpse(self, org: Organism) -> None:
         org.alive = False
-        self.world.set_material(org.regs[Organism.DP_X], org.regs[Organism.DP_Y], World.NUTRIENT)
+        x, y = org.regs[Organism.DP_X], org.regs[Organism.DP_Y]
+        self.world.set_material(x, y, World.NUTRIENT)
+        self.world.nutrient_life[y % self.world.h, x % self.world.w] = NUTRIENT_LIFE
         self._emit_event("death", {
             "tick": self.current_tick,
             "org_id": org.org_id,
@@ -147,6 +156,7 @@ class SimulationController:
             "tick_count": self.current_tick,
             "world_grid": self.world.grid.copy(),
             "world_signal": self.world.signal_life.copy(),
+            "world_nutrient": self.world.nutrient_life.copy(),
             "organisms": [],
         }
         for org in self.population.pool:
@@ -168,6 +178,7 @@ class SimulationController:
         self.current_tick = snapshot["tick_count"]
         self.world.grid = snapshot["world_grid"].copy()
         self.world.signal_life = snapshot["world_signal"].copy()
+        self.world.nutrient_life = snapshot["world_nutrient"].copy()
         # 重建种群（简化实现）
         for org in self.population.pool:
             if org is not None:

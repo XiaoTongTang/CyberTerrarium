@@ -123,7 +123,10 @@ class VirtualMachine:
             else:
                 org.energy += E_NUT
             org.regs[Organism.INV] = 0
-            world.set_material(org.regs[Organism.DP_X], org.regs[Organism.DP_Y], World.EMPTY)
+            x = org.regs[Organism.DP_X]
+            y = org.regs[Organism.DP_Y]
+            world.set_material(x, y, World.EMPTY)
+            world.nutrient_life[y % world.h, x % world.w] = 0
 
     def _op_make(self, org: Organism, mat_id: int) -> None:
         if mat_id == World.ENZYME:

@@ -18,6 +18,7 @@ class World:
         self.h = height
         self.grid = np.zeros((height, width), dtype=np.uint8)
         self.signal_life = np.zeros((height, width), dtype=np.int8)
+        self.nutrient_life = np.zeros((height, width), dtype=np.int8)
 
     def get_material(self, x: int, y: int) -> int:
         return int(self.grid[y % self.h, x % self.w])
