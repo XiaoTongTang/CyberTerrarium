@@ -76,6 +76,10 @@ class VirtualMachine:
         if opcode not in (0x11, 0x12, 0x13):
             org.pc = (org.pc + 4) % len(org.genome)
 
+        # 归一化DP坐标：算术指令可能将DP_X/DP_Y设为负数或超出边界
+        org.regs[Organism.DP_X] = org.regs[Organism.DP_X] % world.w
+        org.regs[Organism.DP_Y] = org.regs[Organism.DP_Y] % world.h
+
         return spawn_requests
 
     def _safe_reg(self, idx: int) -> int:
@@ -138,11 +142,11 @@ class VirtualMachine:
     def _op_emit(self, org: Organism, imm_x: int, imm_y: int, world: World) -> None:
         if abs(imm_x) + abs(imm_y) > 1:
             return  # 写权限校验失败
-        if org.regs[Organism.INV] == World.EMPTY:
-            return  # 背包为空
+        material = org.regs[Organism.INV]
+        if material < World.NUTRIENT or material > World.SIGNAL:
+            return  # 背包为空或含非法物质
         tx = (org.regs[Organism.DP_X] + imm_x) % world.w
         ty = (org.regs[Organism.DP_Y] + imm_y) % world.h
-        material = org.regs[Organism.INV]
         world.set_material(tx, ty, material)
         if material == World.SIGNAL:
             world.signal_life[ty % world.h, tx % world.w] = 50

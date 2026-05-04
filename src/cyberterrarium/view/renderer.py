@@ -53,7 +53,8 @@ class FrameRenderer:
     def _render_material(self) -> np.ndarray:
         grid = self.view_api.get_chemical_grid_ref()  # (H, W) uint8
         positions = self.view_api.get_organism_positions_array()  # (N, 2) [Y, X]
-        rgb = MATERIAL_LUT[grid]  # (H, W, 3)
+        safe_grid = np.clip(grid, 0, len(MATERIAL_LUT) - 1)
+        rgb = MATERIAL_LUT[safe_grid]  # (H, W, 3)
         if len(positions) > 0:
             rgb[positions[:, 0], positions[:, 1]] = ORG_COLOR
         # transpose到(W, H, 3)给pygame，.copy()确保C-contiguous
@@ -64,9 +65,10 @@ class FrameRenderer:
         positions = self.view_api.get_organism_positions_array()
         energies = self.view_api.get_organism_energies_array()
         H, W = grid.shape
+        safe_grid = np.clip(grid, 0, len(MATERIAL_LUT) - 1)
 
         # 暗化化学背景
-        bg = (MATERIAL_LUT[grid].astype(np.float32) * 0.3).astype(np.uint8)
+        bg = (MATERIAL_LUT[safe_grid].astype(np.float32) * 0.3).astype(np.uint8)
 
         # 稀疏散点赋值
         energy_map = np.zeros((H, W), dtype=np.uint8)

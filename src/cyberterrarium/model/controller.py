@@ -173,8 +173,8 @@ class SimulationController:
         eng = np.empty(n, dtype=np.int32)
         ids = np.empty(n, dtype=np.int32)
         for i, org in enumerate(alive):
-            pos[i, 0] = org.regs[Organism.DP_Y]
-            pos[i, 1] = org.regs[Organism.DP_X]
+            pos[i, 0] = org.regs[Organism.DP_Y] % self.world.h
+            pos[i, 1] = org.regs[Organism.DP_X] % self.world.w
             eng[i] = org.energy
             ids[i] = org.org_id
         self._cached_alive_positions_yx = pos

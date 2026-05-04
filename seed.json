@@ -3,7 +3,7 @@
     {
       "name": "Grazer",
       "assembly": "MOV R0, 1\nMOVE_X R0\nEAT\nJMP -2",
-      "count": 20
+      "count": 200
     }
   ]
 }
