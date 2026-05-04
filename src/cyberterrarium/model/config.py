@@ -19,7 +19,7 @@ MAX_POP: int = 10000        # 最大人口
 # --- 世界参数 ---
 WORLD_WIDTH: int = 200
 WORLD_HEIGHT: int = 200
-NUTRIENT_SPAWN_RATE: float = 0.01  # 每个空白格在营养生成Tick生成营养的概率
+NUTRIENT_SPAWN_RATE: float = 0.05  # 每个空白格在营养生成Tick生成营养的概率
 NUTRIENT_LIFE: int = 50  # 营养生命周期（Tick数），归零后变空
 
 # --- 突变引擎参数 ---
