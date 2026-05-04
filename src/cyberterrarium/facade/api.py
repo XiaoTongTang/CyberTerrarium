@@ -93,10 +93,12 @@ class ControlAPI:
 
     def step_reproduction(self) -> None:
         if self.ctrl.mode == "DEBUG":
+            self.ctrl.execute_phase_repro()
             self.ctrl.execute_phase_3()
 
     def step_full_tick(self) -> None:
         if self.ctrl.mode == "DEBUG":
             self.ctrl.execute_phase_1()
             self.ctrl.execute_phase_2()
+            self.ctrl.execute_phase_repro()
             self.ctrl.execute_phase_3()

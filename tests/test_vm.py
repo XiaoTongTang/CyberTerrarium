@@ -1,11 +1,9 @@
 """虚拟机指令执行引擎测试"""
 
 from cyberterrarium.model.config import (
-    C_BASE,
     C_MAKE_ENZ,
     C_MAKE_SIG,
     C_MAKE_TOX,
-    C_PER_INST,
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
@@ -621,43 +619,8 @@ class TestPCAdvance:
 
 
 class TestSplit:
-    def test_split_success(self) -> None:
-        # 场景：能量充足(C_BASE+len*8+100)、种群未满、周围有空位，
-        # 验证分裂成功：返回1个spawn请求，子代位于3x3邻域，能量正确扣除
-        vm = VirtualMachine()
-        genome = bytearray([0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        cost = C_BASE + len(genome) * C_PER_INST
-        org = _make_org(
-            genome,
-            energy=cost + 100,
-            regs=[0, 0, 0, 0, 0, 5, 5],
-        )
-        world = _make_world(10, 10)
-        pop = Population(10)
-        result = vm.execute_instruction(org, world, pop)
-        assert len(result) == 1
-        assert result[0]["genome"] == genome
-        assert org.energy == 100
-        cx, cy = result[0]["x"], result[0]["y"]
-        assert abs(cx - 5) <= 1 and abs(cy - 5) <= 1
-
-    def test_split_insufficient_energy(self) -> None:
-        # 场景：能量=cost-1（不足），验证SPLIT被当做NOP处理，返回空列表
-        vm = VirtualMachine()
-        genome = bytearray([0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        cost = C_BASE + len(genome) * C_PER_INST
-        org = _make_org(
-            genome,
-            energy=cost - 1,
-            regs=[0, 0, 0, 0, 0, 5, 5],
-        )
-        world = _make_world(10, 10)
-        pop = Population(10)
-        result = vm.execute_instruction(org, world, pop)
-        assert result == []
-
-    def test_split_population_full(self) -> None:
-        # 场景：种群容量为1且已被占用（is_full=True），验证SPLIT被拒绝
+    def test_split_is_now_nop(self) -> None:
+        # 场景：SPLIT(0x14)已废弃，执行效果等同NOP，不再产生spawn request
         vm = VirtualMachine()
         genome = bytearray([0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
         org = _make_org(
@@ -666,46 +629,20 @@ class TestSplit:
             regs=[0, 0, 0, 0, 0, 5, 5],
         )
         world = _make_world(10, 10)
-        pop = Population(1)
-        pop.spawn(bytearray(8), 3, 3)
+        pop = Population(10)
         result = vm.execute_instruction(org, world, pop)
         assert result == []
+        assert org.energy == 1000  # 不扣繁殖成本
 
-    def test_split_no_empty_neighbors(self) -> None:
-        # 场景：生物(5,5)周围3x3所有格子都被营养填满，无空位可放子代，
-        # 验证SPLIT被拒绝
+    def test_split_pc_still_advances(self) -> None:
+        # 场景：SPLIT废弃后PC仍正常推进
         vm = VirtualMachine()
         genome = bytearray([0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        org = _make_org(
-            genome,
-            energy=1000,
-            regs=[0, 0, 0, 0, 0, 5, 5],
-        )
-        world = _make_world(10, 10)
-        for dx in range(-1, 2):
-            for dy in range(-1, 2):
-                world.set_material((5 + dx) % 10, (5 + dy) % 10, World.NUTRIENT)
+        org = _make_org(genome, pc=0, energy=1000)
+        world = _make_world()
         pop = Population(10)
-        result = vm.execute_instruction(org, world, pop)
-        assert result == []
-
-    def test_split_genome_is_copy(self) -> None:
-        # 场景：分裂成功后，验证子代基因组是父代的深拷贝（值相等但引用不同），
-        # 修改子代不应影响父代
-        vm = VirtualMachine()
-        genome = bytearray([0x14, 0x00, 0x00, 0x00, 0x01, 0x00, 0x05, 0x00])
-        org = _make_org(
-            genome,
-            energy=1000,
-            regs=[0, 0, 0, 0, 0, 5, 5],
-        )
-        world = _make_world(10, 10)
-        pop = Population(10)
-        result = vm.execute_instruction(org, world, pop)
-        assert len(result) == 1
-        child_genome = result[0]["genome"]
-        assert child_genome == genome
-        assert child_genome is not genome
+        vm.execute_instruction(org, world, pop)
+        assert org.pc == 4
 
 
 class TestTruncatedBytecode:

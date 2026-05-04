@@ -100,7 +100,7 @@ class TopBar:
             ("[Space] Play/Pause", True),
             ("[F1] Physics", debug_active),
             ("[F2] Life", debug_active),
-            ("[F3] Repro", debug_active),
+            ("[F3] Repro+Settle", debug_active),
             ("[F5] FullTick", debug_active),
         ]
         for text, active in keys_info:

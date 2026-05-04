@@ -1,18 +1,12 @@
 """指令执行引擎 - 虚拟机CPU核心"""
 
-import random
-
 from cyberterrarium.model.config import (
-    C_BASE,
     C_MAKE_ENZ,
     C_MAKE_SIG,
     C_MAKE_TOX,
-    C_PER_INST,
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
-    MAX_GENOME_LENGTH,
-    MIN_GENOME_LENGTH,
 )
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -196,28 +190,5 @@ class VirtualMachine:
     def _op_split(
         self, org: Organism, world: World, population: Population
     ) -> list[dict]:
-        cost = C_BASE + len(org.genome) * C_PER_INST
-        if org.energy < cost:
-            return []
-        if population.is_full:
-            return []
-        # 空间校验
-        dp_x = org.regs[Organism.DP_X]
-        dp_y = org.regs[Organism.DP_Y]
-        empty_positions: list[tuple[int, int]] = []
-        for dx in range(-1, 2):
-            for dy in range(-1, 2):
-                nx, ny = (dp_x + dx) % world.w, (dp_y + dy) % world.h
-                if world.get_material(nx, ny) == World.EMPTY:
-                    empty_positions.append((nx, ny))
-        if not empty_positions:
-            return []
-        # 执行分裂
-        org.energy -= cost
-        child_genome = bytearray(org.genome)
-        # 突变引擎将在MutationEngine中施加
-        # 校验长度
-        if len(child_genome) < MIN_GENOME_LENGTH or len(child_genome) > MAX_GENOME_LENGTH:
-            return []
-        child_x, child_y = random.choice(empty_positions)
-        return [{"genome": child_genome, "x": child_x, "y": child_y}]
+        # SPLIT 已废弃，执行效果等同 NOP
+        return []

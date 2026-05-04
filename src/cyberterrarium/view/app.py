@@ -112,7 +112,7 @@ class CyberTerrariumUI:
             self._flash_phase("PHASE 2: LIFE")
         elif key == pygame.K_F3 and is_debug:
             self.control_api.step_reproduction()
-            self._flash_phase("PHASE 3: REPRODUCTION")
+            self._flash_phase("PHASE 3: REPRO + SETTLE")
         elif key == pygame.K_F5 and is_debug:
             self.control_api.step_full_tick()
             self._flash_phase("FULL TICK")

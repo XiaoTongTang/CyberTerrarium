@@ -4,7 +4,17 @@ import random
 
 import numpy as np
 
-from cyberterrarium.model.config import AGE_LIMIT, E_BIRTH, NUTRIENT_LIFE, NUTRIENT_SPAWN_RATE
+from cyberterrarium.model.config import (
+    AGE_LIMIT,
+    C_BASE,
+    C_PER_INST,
+    E_BIRTH,
+    MAX_GENOME_LENGTH,
+    MIN_GENOME_LENGTH,
+    NUTRIENT_LIFE,
+    NUTRIENT_SPAWN_RATE,
+    REPRO_ENERGY_MULTIPLIER,
+)
 from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -37,6 +47,7 @@ class SimulationController:
     def run_one_full_tick(self) -> None:
         self.execute_phase_1()
         self.execute_phase_2()
+        self.execute_phase_repro()
         self.execute_phase_3()
 
     def execute_phase_1(self) -> None:
@@ -65,7 +76,6 @@ class SimulationController:
         """生命调度阶段：洗牌 + 衰老 + 年龄判死 + 扣税判死 + 执行指令"""
         alive_list = self.population.get_alive_list()
         random.shuffle(alive_list)
-        spawn_queue: list[dict] = []
 
         # 统一衰老
         for org in alive_list:
@@ -83,17 +93,44 @@ class SimulationController:
                 self._kill_and_corpse(org)
                 continue
 
-            # 执行指令
-            requests = self.vm.execute_instruction(org, self.world, self.population)
-            for req in requests:
-                child_genome = apply_mutations(req["genome"])
-                spawn_queue.append(
-                    {"genome": child_genome, "x": req["x"], "y": req["y"]}
-                )
+            # 执行指令（SPLIT 已废弃，不再产生 spawn request）
+            self.vm.execute_instruction(org, self.world, self.population)
 
-        # 暂存繁衍队列
-        self._spawn_queue = spawn_queue
         self._rebuild_alive_cache()
+
+    def execute_phase_repro(self) -> None:
+        """自动繁殖阶段：能量达标的生物自动触发繁殖"""
+        alive_list = self.population.get_alive_list()
+        spawn_queue: list[dict] = []
+
+        for org in alive_list:
+            cost = C_BASE + len(org.genome) * C_PER_INST
+            threshold = int(cost * REPRO_ENERGY_MULTIPLIER)
+            if org.energy < threshold:
+                continue
+            # 种群上限校验
+            if self.population.is_full:
+                break
+            # 空间校验
+            dp_x = org.regs[Organism.DP_X]
+            dp_y = org.regs[Organism.DP_Y]
+            empty_positions: list[tuple[int, int]] = []
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    nx, ny = (dp_x + dx) % self.world.w, (dp_y + dy) % self.world.h
+                    if self.world.get_material(nx, ny) == World.EMPTY:
+                        empty_positions.append((nx, ny))
+            if not empty_positions:
+                continue
+            # 执行繁殖
+            org.energy -= cost
+            child_genome = apply_mutations(bytearray(org.genome))
+            if len(child_genome) < MIN_GENOME_LENGTH or len(child_genome) > MAX_GENOME_LENGTH:
+                continue
+            child_x, child_y = random.choice(empty_positions)
+            spawn_queue.append({"genome": child_genome, "x": child_x, "y": child_y})
+
+        self._spawn_queue = spawn_queue
 
     def execute_phase_3(self) -> None:
         """繁衍结算阶段"""

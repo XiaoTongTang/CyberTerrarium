@@ -1,7 +1,6 @@
 """种子配置加载器测试"""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
