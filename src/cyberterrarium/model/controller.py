@@ -27,6 +27,12 @@ class SimulationController:
         self.is_paused = False
         self.mode = "CONTINUOUS"  # CONTINUOUS | DEBUG
         self._spawn_queue: list[dict] = []
+        # 零拷贝渲染缓存
+        self._cached_alive_positions_yx: np.ndarray = np.empty((0, 2), dtype=np.int16)
+        self._cached_alive_energies: np.ndarray = np.empty(0, dtype=np.int32)
+        self._cached_alive_ids: np.ndarray = np.empty(0, dtype=np.int32)
+        # 事件系统
+        self._event_listeners: list = []
 
     def run_one_full_tick(self) -> None:
         self.execute_phase_1()
@@ -80,18 +86,60 @@ class SimulationController:
 
         # 暂存繁衍队列
         self._spawn_queue = spawn_queue
+        self._rebuild_alive_cache()
 
     def execute_phase_3(self) -> None:
         """繁衍结算阶段"""
         for req in self._spawn_queue:
-            self.population.spawn(
+            org_id = self.population.spawn(
                 genome=req["genome"], x=req["x"], y=req["y"], energy=E_BIRTH
             )
+            if org_id >= 0:
+                self._emit_event("birth", {
+                    "tick": self.current_tick,
+                    "org_id": org_id,
+                    "x": req["x"],
+                    "y": req["y"],
+                })
         self._spawn_queue = []
+        self._rebuild_alive_cache()
 
     def _kill_and_corpse(self, org: Organism) -> None:
         org.alive = False
         self.world.set_material(org.regs[Organism.DP_X], org.regs[Organism.DP_Y], World.NUTRIENT)
+        self._emit_event("death", {
+            "tick": self.current_tick,
+            "org_id": org.org_id,
+            "x": org.regs[Organism.DP_X],
+            "y": org.regs[Organism.DP_Y],
+        })
+
+    def _rebuild_alive_cache(self) -> None:
+        alive = self.population.get_alive_list()
+        n = len(alive)
+        if n == 0:
+            self._cached_alive_positions_yx = np.empty((0, 2), dtype=np.int16)
+            self._cached_alive_energies = np.empty(0, dtype=np.int32)
+            self._cached_alive_ids = np.empty(0, dtype=np.int32)
+            return
+        pos = np.empty((n, 2), dtype=np.int16)
+        eng = np.empty(n, dtype=np.int32)
+        ids = np.empty(n, dtype=np.int32)
+        for i, org in enumerate(alive):
+            pos[i, 0] = org.regs[Organism.DP_Y]
+            pos[i, 1] = org.regs[Organism.DP_X]
+            eng[i] = org.energy
+            ids[i] = org.org_id
+        self._cached_alive_positions_yx = pos
+        self._cached_alive_energies = eng
+        self._cached_alive_ids = ids
+
+    def add_event_listener(self, callback) -> None:
+        self._event_listeners.append(callback)
+
+    def _emit_event(self, event_type: str, data: dict) -> None:
+        for cb in self._event_listeners:
+            cb(event_type, data)
 
     def take_snapshot(self) -> dict:
         """保存当前世界完整状态"""

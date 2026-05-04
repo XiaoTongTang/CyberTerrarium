@@ -5,6 +5,7 @@ from cyberterrarium.model.controller import SimulationController
 from cyberterrarium.model.population import Population
 from cyberterrarium.model.world import World
 from cyberterrarium.facade.api import ControlAPI, ViewAPI
+from cyberterrarium.view.app import CyberTerrariumUI
 
 
 def main() -> None:
@@ -15,9 +16,8 @@ def main() -> None:
     view = ViewAPI(controller)
     control = ControlAPI(controller)
 
-    # TODO: 接入Pygame渲染循环
-    print("CyberTerrarium initialized.")
-    print(f"World: {world.w}x{world.h}, Max Pop: {population.max_cap}")
+    ui = CyberTerrariumUI(view, control)
+    ui.run()
 
 
 if __name__ == "__main__":

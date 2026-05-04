@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 
 from cyberterrarium.model.controller import SimulationController
-from cyberterrarium.model.organism import Organism
 
 
 class ViewAPI:
@@ -19,15 +18,16 @@ class ViewAPI:
         return self.ctrl.world.grid
 
     def get_organism_positions_array(self) -> np.ndarray:
-        """获取存活生物坐标矩阵 (N, 2) int16。"""
-        alive = self.ctrl.population.get_alive_list()
-        if not alive:
-            return np.empty((0, 2), dtype=np.int16)
-        positions = np.array(
-            [[org.regs[Organism.DP_X], org.regs[Organism.DP_Y]] for org in alive],
-            dtype=np.int16,
-        )
-        return positions
+        """获取存活生物坐标矩阵 (N, 2) int16，列顺序 [Y, X]。"""
+        return self.ctrl._cached_alive_positions_yx
+
+    def get_organism_energies_array(self) -> np.ndarray:
+        """获取存活生物能量数组 (N,) int32（零拷贝）。"""
+        return self.ctrl._cached_alive_energies
+
+    def get_organism_ids_array(self) -> np.ndarray:
+        """获取存活生物ID数组 (N,) int32（零拷贝）。"""
+        return self.ctrl._cached_alive_ids
 
     def get_global_stats(self) -> dict:
         return {
