@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 
+import numpy as np
 import pygame
 
 from cyberterrarium.facade.api import ViewAPI
@@ -17,6 +18,67 @@ from cyberterrarium.view.layout import (
     Theme,
 )
 from cyberterrarium.view.renderer import MATERIAL_LUT
+
+
+def _genome_hex_dump(genome: bytearray | bytes) -> list[str]:
+    """将基因组转为十六进制转储行列表，每4字节一条指令。"""
+    lines: list[str] = []
+    for i in range(0, len(genome) - 3, 4):
+        chunk = genome[i : i + 4]
+        hex_str = " ".join(f"{b:02X}" for b in chunk)
+        lines.append(f"{i:04X}: {hex_str}")
+    remainder = len(genome) % 4
+    if remainder:
+        trailing = genome[len(genome) - remainder :]
+        hex_str = " ".join(f"{b:02X}" for b in trailing)
+        lines.append(f"{len(genome) - remainder:04X}: {hex_str}")
+    return lines
+
+
+def _render_text_box(
+    surface: pygame.Surface,
+    x: int,
+    y: int,
+    w: int,
+    box_h: int,
+    title: str,
+    lines: list[str],
+    font: pygame.font.Font,
+    pc: int,
+    highlight_col_width: int = 0,
+) -> int:
+    """渲染一个带标题和边框的文本框，返回 box 底部 y 坐标。"""
+    # 标题
+    title_h = 18
+    surface.blit(font.render(title, True, Theme.HIGHLIGHT), (x + 10, y + 2))
+    # 边框区域
+    content_y = y + title_h
+    content_h = box_h - title_h
+    pygame.draw.rect(surface, (25, 25, 30), (x + 5, content_y, w - 10, content_h))
+    pygame.draw.rect(surface, Theme.BORDER, (x + 5, content_y, w - 10, content_h), 1)
+    # 文本内容
+    line_h = 15
+    max_lines = content_h // line_h
+    clip = pygame.Rect(x + 6, content_y + 1, w - 12, content_h - 2)
+    surface.set_clip(clip)
+    ty = content_y + 2
+    for i, line_text in enumerate(lines):
+        if i >= max_lines:
+            break
+        # PC 高亮行
+        if highlight_col_width > 0:
+            inst_offset = i * highlight_col_width
+            is_pc_line = inst_offset <= pc < inst_offset + highlight_col_width
+        else:
+            inst_offset = i * 4
+            is_pc_line = inst_offset <= pc < inst_offset + 4
+        if is_pc_line:
+            pygame.draw.rect(surface, (40, 60, 90), (x + 5, ty, w - 10, line_h))
+        txt = font.render(line_text, True, Theme.TEXT)
+        surface.blit(txt, (x + 12, ty))
+        ty += line_h
+    surface.set_clip(None)
+    return y + box_h
 
 
 class TopBar:
@@ -205,7 +267,7 @@ class StatsTab:
 
 
 class InspectorTab:
-    """生物检查器Tab：元数据、反汇编、局部环境。"""
+    """生物检查器Tab：元数据、寄存器、十六进制/反汇编文本框、局部环境。"""
 
     def __init__(self, view_api: ViewAPI) -> None:
         self.view_api = view_api
@@ -238,49 +300,71 @@ class InspectorTab:
             surface.blit(txt, (x + 10, y + 10))
             return
 
-        # 元数据区
+        regs = detail["regs"]
+        pc = detail["pc"]
+        genome = detail["genome_bytes"]
+
+        # ── 元数据区 ──
         my = y + 8
         mx = x + 10
         col_w = w // 2 - 10
         meta = [
             (f"ID: {detail['id']}", f"Age: {detail['age']}"),
-            (f"Energy: {detail['energy']}", f"Len: {len(detail['genome_bytes'])}B"),
+            (f"Energy: {detail['energy']}", f"Len: {len(genome)}B"),
             (
-                f"Pos: ({detail['regs'][Organism.DP_X]}, {detail['regs'][Organism.DP_Y]})",
-                "Status: ALIVE",
+                f"Pos: ({regs[Organism.DP_X]}, {regs[Organism.DP_Y]})",
+                f"PC: {pc}",
             ),
         ]
         for left, right in meta:
             surface.blit(self.font_sm.render(left, True, Theme.TEXT), (mx, my))
             surface.blit(self.font_sm.render(right, True, Theme.TEXT), (mx + col_w, my))
             my += 18
-        my += 5
+        my += 3
         pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
         my += 5
 
-        # 反汇编视图
-        genome = detail["genome_bytes"]
-        pc = detail["pc"]
-        lines = disassemble_with_labels(genome)
-        line_h = 16
-        visible_lines = min((h - (my - y) - 220) // line_h, len(lines))
-        end = min(len(lines), self.scroll_offset + visible_lines)
-        for i in range(max(0, self.scroll_offset), end):
-            line_text = lines[i]
-            inst_offset = i * 4
-            is_pc_line = inst_offset <= pc < inst_offset + 4
-            if is_pc_line:
-                pygame.draw.rect(surface, (40, 60, 90), (x, my, w, line_h))
-            txt = self.font_sm.render(line_text, True, Theme.TEXT)
-            surface.blit(txt, (x + 10, my))
-            my += line_h
+        # ── 寄存器区 ──
+        reg_names = ["R0", "R1", "R2", "R3", "INV", "DP_X", "DP_Y"]
+        label = "Regs: "
+        surface.blit(self.font_sm.render(label, True, Theme.HIGHLIGHT), (mx, my))
+        rx = mx + self.font_sm.size(label)[0]
+        for i, name in enumerate(reg_names):
+            val = regs[i]
+            txt = f"{name}={val}"
+            surface.blit(self.font_sm.render(txt, True, Theme.TEXT), (rx, my))
+            rx += self.font_sm.size(txt)[0] + 8
+        my += 18
+        # Equal flag
+        ef_val = "1" if detail["equal_flag"] else "0"
+        surface.blit(
+            self.font_sm.render(f"EQ_Flag: {ef_val}", True, Theme.TEXT), (mx, my)
+        )
+        my += 20
+        pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
+        my += 5
 
-        # 局部环境 9x9
-        env_y = y + h - 210
-        pygame.draw.line(surface, Theme.BORDER, (x + 5, env_y - 5), (x + w - 5, env_y - 5))
+        # ── 十六进制文本框 ──
+        hex_lines = _genome_hex_dump(genome)
+        asm_lines = disassemble_with_labels(genome)
+        box_h = 100
+        my = _render_text_box(
+            surface, x, my, w, box_h, "Hex Dump", hex_lines,
+            self.font_sm, pc, highlight_col_width=4,
+        )
+
+        # ── 反汇编文本框 ──
+        my = _render_text_box(
+            surface, x, my, w, box_h, "Disassembly", asm_lines,
+            self.font_sm, pc,
+        )
+
+        # ── 局部环境 9x9 ──
+        pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
+        my += 3
         grid = self.view_api.get_chemical_grid_ref()
-        gy = detail["regs"][Organism.DP_Y]
-        gx = detail["regs"][Organism.DP_X]
+        gy = regs[Organism.DP_Y]
+        gx = regs[Organism.DP_X]
         grid_h, grid_w = grid.shape
         cell_size = min((w - 20) // 9, 22)
         env_x0 = x + (w - 9 * cell_size) // 2
@@ -288,14 +372,14 @@ class InspectorTab:
             for dx in range(-4, 5):
                 wy = (gy + dy) % grid_h
                 wx = (gx + dx) % grid_w
-                mat_id = int(grid[wy, wx])
+                mat_id = int(np.clip(grid[wy, wx], 0, 4))
                 color = tuple(MATERIAL_LUT[mat_id])
-                rx = env_x0 + (dx + 4) * cell_size
-                ry = env_y + (dy + 4) * cell_size
-                pygame.draw.rect(surface, color, (rx, ry, cell_size - 1, cell_size - 1))
+                erx = env_x0 + (dx + 4) * cell_size
+                ery = my + (dy + 4) * cell_size
+                pygame.draw.rect(surface, color, (erx, ery, cell_size - 1, cell_size - 1))
         # 中心标记
         cx = env_x0 + 4 * cell_size
-        cy = env_y + 4 * cell_size
+        cy = my + 4 * cell_size
         pygame.draw.rect(surface, Theme.HIGHLIGHT, (cx, cy, cell_size - 1, cell_size - 1), 2)
 
 
