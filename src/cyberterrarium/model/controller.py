@@ -118,7 +118,10 @@ class SimulationController:
             for dx in range(-1, 2):
                 for dy in range(-1, 2):
                     nx, ny = (dp_x + dx) % self.world.w, (dp_y + dy) % self.world.h
-                    if self.world.get_material(nx, ny) == World.EMPTY:
+                    if (
+                        self.world.get_material(nx, ny) == World.EMPTY
+                        and self.world.get_entity(nx, ny) is None
+                    ):
                         empty_positions.append((nx, ny))
             if not empty_positions:
                 continue
@@ -139,6 +142,8 @@ class SimulationController:
                 genome=req["genome"], x=req["x"], y=req["y"], energy=E_BIRTH
             )
             if org_id >= 0:
+                org = self.population.pool[org_id]
+                self.world.set_entity(req["x"], req["y"], org)
                 self._emit_event("birth", {
                     "tick": self.current_tick,
                     "org_id": org_id,
@@ -151,6 +156,7 @@ class SimulationController:
     def _kill_and_corpse(self, org: Organism) -> None:
         org.alive = False
         x, y = org.regs[Organism.DP_X], org.regs[Organism.DP_Y]
+        self.world.set_entity(x, y, None)
         self.world.set_material(x, y, World.NUTRIENT)
         self.world.nutrient_life[y % self.world.h, x % self.world.w] = NUTRIENT_LIFE
         self._emit_event("death", {
@@ -217,14 +223,22 @@ class SimulationController:
         self.world.grid = snapshot["world_grid"].copy()
         self.world.signal_life = snapshot["world_signal"].copy()
         self.world.nutrient_life = snapshot["world_nutrient"].copy()
+        # 重建实体网格
+        self.world.entity_grid = [
+            [None for _ in range(self.world.w)] for _ in range(self.world.h)
+        ]
         # 重建种群
         for i in range(self.population.max_cap):
             self.population.pool[i] = None
         self.population.free_ids = list(range(self.population.max_cap - 1, -1, -1))
         for org_data in snapshot["organisms"]:
-            self.population.spawn(
+            x = org_data["regs"][Organism.DP_X]
+            y = org_data["regs"][Organism.DP_Y]
+            org_id = self.population.spawn(
                 genome=org_data["genome"],
-                x=org_data["regs"][Organism.DP_X],
-                y=org_data["regs"][Organism.DP_Y],
+                x=x,
+                y=y,
                 energy=org_data["energy"],
             )
+            if org_id >= 0:
+                self.world.set_entity(x, y, self.population.pool[org_id])

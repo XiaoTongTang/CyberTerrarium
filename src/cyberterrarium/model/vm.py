@@ -76,32 +76,39 @@ class VirtualMachine:
         if opcode not in (0x11, 0x12, 0x13):
             org.pc = (org.pc + 4) % len(org.genome)
 
-        # 归一化DP坐标：算术指令可能将DP_X/DP_Y设为负数或超出边界
+        # 归一化DP坐标：防御性兜底（算术指令已禁止修改DP_X/DP_Y，正常不会触发）
         org.regs[Organism.DP_X] = org.regs[Organism.DP_X] % world.w
         org.regs[Organism.DP_Y] = org.regs[Organism.DP_Y] % world.h
 
         return spawn_requests
 
+    # 数据寄存器范围：仅 R0~R3 和 INV 可被算术指令写入
+    _DATA_REG_MAX: int = Organism.INV  # 4, DP_X(5)/DP_Y(6) 不在此范围
+
     def _safe_reg(self, idx: int) -> int:
         return idx if 0 <= idx < Organism.REG_COUNT else 0
 
+    def _data_reg(self, idx: int) -> int:
+        """映射到数据寄存器，DP_X/DP_Y返回R0（禁止算术指令修改坐标寄存器）。"""
+        return idx if 0 <= idx <= self._DATA_REG_MAX else 0
+
     def _op_mov(self, org: Organism, ra: int, imm: int) -> None:
-        org.regs[self._safe_reg(ra)] = imm
+        org.regs[self._data_reg(ra)] = imm
 
     def _op_add(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._safe_reg(ra)] += org.regs[self._safe_reg(rb)]
+        org.regs[self._data_reg(ra)] += org.regs[self._safe_reg(rb)]
 
     def _op_sub(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._safe_reg(ra)] -= org.regs[self._safe_reg(rb)]
+        org.regs[self._data_reg(ra)] -= org.regs[self._safe_reg(rb)]
 
     def _op_and(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._safe_reg(ra)] &= org.regs[self._safe_reg(rb)]
+        org.regs[self._data_reg(ra)] &= org.regs[self._safe_reg(rb)]
 
     def _op_or(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._safe_reg(ra)] |= org.regs[self._safe_reg(rb)]
+        org.regs[self._data_reg(ra)] |= org.regs[self._safe_reg(rb)]
 
     def _op_not(self, org: Organism, ra: int) -> None:
-        org.regs[self._safe_reg(ra)] = ~org.regs[self._safe_reg(ra)]
+        org.regs[self._data_reg(ra)] = ~org.regs[self._data_reg(ra)]
 
     def _op_read_rel(self, org: Organism, imm_x: int, imm_y: int, world: World) -> None:
         tx = (org.regs[Organism.DP_X] + imm_x) % world.w
@@ -155,14 +162,24 @@ class VirtualMachine:
     def _op_move_x(self, org: Organism, rx: int, world: World) -> None:
         new_x = (org.regs[Organism.DP_X] + org.regs[self._safe_reg(rx)]) % world.w
         new_y = org.regs[Organism.DP_Y]
+        if world.get_entity(new_x, new_y) is not None:
+            return  # 碰撞：目标格已有生物，移动失败
         self._check_toxin(org, new_x, new_y, world)
+        old_x = org.regs[Organism.DP_X]
+        world.set_entity(old_x, new_y, None)
         org.regs[Organism.DP_X] = new_x
+        world.set_entity(new_x, new_y, org)
 
     def _op_move_y(self, org: Organism, rx: int, world: World) -> None:
         new_x = org.regs[Organism.DP_X]
         new_y = (org.regs[Organism.DP_Y] + org.regs[self._safe_reg(rx)]) % world.h
+        if world.get_entity(new_x, new_y) is not None:
+            return  # 碰撞：目标格已有生物，移动失败
         self._check_toxin(org, new_x, new_y, world)
+        old_y = org.regs[Organism.DP_Y]
+        world.set_entity(new_x, old_y, None)
         org.regs[Organism.DP_Y] = new_y
+        world.set_entity(new_x, new_y, org)
 
     def _check_toxin(self, org: Organism, x: int, y: int, world: World) -> None:
         cell = world.get_material(x, y)

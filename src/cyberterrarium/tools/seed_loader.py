@@ -136,6 +136,8 @@ def populate(
             )
             if org_id >= 0:
                 spawned += 1
+                org = controller.population.pool[org_id]
+                controller.world.set_entity(x, y, org)
 
     controller._rebuild_alive_cache()
     return spawned
