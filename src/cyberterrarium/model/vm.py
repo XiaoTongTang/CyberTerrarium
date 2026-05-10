@@ -1,5 +1,7 @@
 """指令执行引擎 - 虚拟机CPU核心"""
 
+from __future__ import annotations
+
 from cyberterrarium.model.config import (
     C_MAKE_ENZ,
     C_MAKE_SIG,
@@ -7,6 +9,12 @@ from cyberterrarium.model.config import (
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
+)
+from cyberterrarium.model.isa import (
+    ARITH_WRITABLE_MAX,
+    OPCODE_BY_CODE,
+    PC_ADVANCE_EXEMPT,
+    REG_COUNT,
 )
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -20,107 +28,98 @@ class VirtualMachine:
         self, org: Organism, world: World, population: Population
     ) -> list[dict]:
         """执行一条指令，返回本Tick产生的繁衍请求列表。"""
-        spawn_requests: list[dict] = []
-
         bytecode = org.genome[org.pc : org.pc + 4]
         if len(bytecode) < 4:
             org.pc = 0
-            return spawn_requests
+            return []
 
         opcode = bytecode[0]
         p1 = bytecode[1]
         p2 = bytecode[2]
-        _p3 = bytecode[3]  # noqa: F841 - reserved for future instructions
-        if opcode == 0x00:
-            pass  # NOP
-        elif opcode == 0x01:
-            self._op_mov(org, p1, p2)
-        elif opcode == 0x02:
-            self._op_add(org, p1, p2)
-        elif opcode == 0x03:
-            self._op_sub(org, p1, p2)
-        elif opcode == 0x04:
-            self._op_and(org, p1, p2)
-        elif opcode == 0x05:
-            self._op_or(org, p1, p2)
-        elif opcode == 0x06:
-            self._op_not(org, p1)
-        elif opcode == 0x09:
-            self._op_read_rel(org, p1, p2, world)
-        elif opcode == 0x0A:
-            self._op_read_abs(org, p1, p2, world)
-        elif opcode == 0x0B:
-            self._op_eat(org, world)
-        elif opcode == 0x0C:
-            self._op_make(org, p1)
-        elif opcode == 0x0D:
-            self._op_emit(org, p1, p2, world)
-        elif opcode == 0x0E:
-            self._op_move_x(org, p1, world)
-        elif opcode == 0x0F:
-            self._op_move_y(org, p1, world)
-        elif opcode == 0x10:
-            self._op_cmp(org, p1, p2)
-        elif opcode == 0x11:
-            self._op_jz(org, p1)
-        elif opcode == 0x12:
-            self._op_jnz(org, p1)
-        elif opcode == 0x13:
-            self._op_jmp(org, p1)
-        elif opcode == 0x14:
-            spawn_requests = self._op_split(org, world, population)
-        else:
-            pass  # 未定义Opcode → 当NOP处理
+        _p3 = bytecode[3]  # noqa: F841 - reserved
 
-        # 默认推进PC
-        if opcode not in (0x11, 0x12, 0x13):
+        # 查表分发
+        opdef = OPCODE_BY_CODE.get(opcode)
+        if opdef is not None:
+            handler = getattr(self, opdef.handler_method)
+            result = handler(org, p1, p2, world, population)
+            spawn_requests = (
+                result if opdef.returns_spawn and isinstance(result, list) else []
+            )
+        else:
+            spawn_requests = []  # 未定义Opcode → NOP
+
+        # PC推进
+        if opcode not in PC_ADVANCE_EXEMPT:
             org.pc = (org.pc + 4) % len(org.genome)
 
-        # 归一化DP坐标：防御性兜底（算术指令已禁止修改DP_X/DP_Y，正常不会触发）
+        # 归一化DP坐标：防御性兜底
         org.regs[Organism.DP_X] = org.regs[Organism.DP_X] % world.w
         org.regs[Organism.DP_Y] = org.regs[Organism.DP_Y] % world.h
 
         return spawn_requests
 
-    # 数据寄存器范围：仅 R0~R3 和 INV 可被算术指令写入
-    _DATA_REG_MAX: int = Organism.INV  # 4, DP_X(5)/DP_Y(6) 不在此范围
-
     def _safe_reg(self, idx: int) -> int:
-        return idx if 0 <= idx < Organism.REG_COUNT else 0
+        return idx if 0 <= idx < REG_COUNT else 0
 
     def _data_reg(self, idx: int) -> int:
-        """映射到数据寄存器，DP_X/DP_Y返回R0（禁止算术指令修改坐标寄存器）。"""
-        return idx if 0 <= idx <= self._DATA_REG_MAX else 0
+        """映射到数据寄存器，DP_X/DP_Y返回R0。"""
+        return idx if 0 <= idx <= ARITH_WRITABLE_MAX else 0
 
-    def _op_mov(self, org: Organism, ra: int, imm: int) -> None:
-        org.regs[self._data_reg(ra)] = imm
+    # ── 统一签名 (org, p1, p2, world, population) ──
 
-    def _op_add(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._data_reg(ra)] += org.regs[self._safe_reg(rb)]
+    def _op_nop(
+        self, org: Organism, _p1: int, _p2: int, _w: World, _pop: Population
+    ) -> None:
+        pass
 
-    def _op_sub(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._data_reg(ra)] -= org.regs[self._safe_reg(rb)]
+    def _op_mov(
+        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] = p2
 
-    def _op_and(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._data_reg(ra)] &= org.regs[self._safe_reg(rb)]
+    def _op_add(
+        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] += org.regs[self._safe_reg(p2)]
 
-    def _op_or(self, org: Organism, ra: int, rb: int) -> None:
-        org.regs[self._data_reg(ra)] |= org.regs[self._safe_reg(rb)]
+    def _op_sub(
+        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] -= org.regs[self._safe_reg(p2)]
 
-    def _op_not(self, org: Organism, ra: int) -> None:
-        org.regs[self._data_reg(ra)] = ~org.regs[self._data_reg(ra)]
+    def _op_and(
+        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] &= org.regs[self._safe_reg(p2)]
 
-    def _op_read_rel(self, org: Organism, imm_x: int, imm_y: int, world: World) -> None:
-        tx = (org.regs[Organism.DP_X] + imm_x) % world.w
-        ty = (org.regs[Organism.DP_Y] + imm_y) % world.h
+    def _op_or(
+        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] |= org.regs[self._safe_reg(p2)]
+
+    def _op_not(
+        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] = ~org.regs[self._data_reg(p1)]
+
+    def _op_read_rel(
+        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+    ) -> None:
+        tx = (org.regs[Organism.DP_X] + p1) % world.w
+        ty = (org.regs[Organism.DP_Y] + p2) % world.h
         org.regs[Organism.R0] = world.get_material(tx, ty)
 
-    def _op_read_abs(self, org: Organism, rx: int, ry: int, world: World) -> None:
-        tx = org.regs[self._safe_reg(rx)] % world.w
-        ty = org.regs[self._safe_reg(ry)] % world.h
+    def _op_read_abs(
+        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+    ) -> None:
+        tx = org.regs[self._safe_reg(p1)] % world.w
+        ty = org.regs[self._safe_reg(p2)] % world.h
         org.regs[Organism.R0] = world.get_material(tx, ty)
 
-    def _op_eat(self, org: Organism, world: World) -> None:
+    def _op_eat(
+        self, org: Organism, _p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
         cell = world.get_material(org.regs[Organism.DP_X], org.regs[Organism.DP_Y])
         if cell == World.NUTRIENT:
             if org.regs[Organism.INV] == World.ENZYME:
@@ -133,83 +132,100 @@ class VirtualMachine:
             world.set_material(x, y, World.EMPTY)
             world.nutrient_life[y % world.h, x % world.w] = 0
 
-    def _op_make(self, org: Organism, mat_id: int) -> None:
-        if mat_id == World.ENZYME:
+    def _op_make(
+        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+    ) -> None:
+        if p1 == World.ENZYME:
             org.energy -= C_MAKE_ENZ
             org.regs[Organism.INV] = World.ENZYME
-        elif mat_id == World.TOXIN:
+        elif p1 == World.TOXIN:
             org.energy -= C_MAKE_TOX
             org.regs[Organism.INV] = World.TOXIN
-        elif mat_id == World.SIGNAL:
+        elif p1 == World.SIGNAL:
             org.energy -= C_MAKE_SIG
             org.regs[Organism.INV] = World.SIGNAL
         else:
-            org.energy -= C_MAKE_ENZ  # 非法物质：代谢失误惩罚
+            org.energy -= C_MAKE_ENZ
 
-    def _op_emit(self, org: Organism, imm_x: int, imm_y: int, world: World) -> None:
-        if abs(imm_x) + abs(imm_y) > 1:
-            return  # 写权限校验失败
+    def _op_emit(
+        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+    ) -> None:
+        if abs(p1) + abs(p2) > 1:
+            return
         material = org.regs[Organism.INV]
         if material < World.NUTRIENT or material > World.SIGNAL:
-            return  # 背包为空或含非法物质
-        tx = (org.regs[Organism.DP_X] + imm_x) % world.w
-        ty = (org.regs[Organism.DP_Y] + imm_y) % world.h
+            return
+        tx = (org.regs[Organism.DP_X] + p1) % world.w
+        ty = (org.regs[Organism.DP_Y] + p2) % world.h
         world.set_material(tx, ty, material)
         if material == World.SIGNAL:
             world.signal_life[ty % world.h, tx % world.w] = 50
         org.regs[Organism.INV] = World.EMPTY
 
-    def _op_move_x(self, org: Organism, rx: int, world: World) -> None:
-        new_x = (org.regs[Organism.DP_X] + org.regs[self._safe_reg(rx)]) % world.w
+    def _op_move_x(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
+        new_x = (org.regs[Organism.DP_X] + org.regs[self._safe_reg(p1)]) % world.w
         new_y = org.regs[Organism.DP_Y]
         if world.get_entity(new_x, new_y) is not None:
-            return  # 碰撞：目标格已有生物，移动失败
+            return
         self._check_toxin(org, new_x, new_y, world)
         old_x = org.regs[Organism.DP_X]
         world.set_entity(old_x, new_y, None)
         org.regs[Organism.DP_X] = new_x
         world.set_entity(new_x, new_y, org)
 
-    def _op_move_y(self, org: Organism, rx: int, world: World) -> None:
+    def _op_move_y(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
         new_x = org.regs[Organism.DP_X]
-        new_y = (org.regs[Organism.DP_Y] + org.regs[self._safe_reg(rx)]) % world.h
+        new_y = (org.regs[Organism.DP_Y] + org.regs[self._safe_reg(p1)]) % world.h
         if world.get_entity(new_x, new_y) is not None:
-            return  # 碰撞：目标格已有生物，移动失败
+            return
         self._check_toxin(org, new_x, new_y, world)
         old_y = org.regs[Organism.DP_Y]
         world.set_entity(new_x, old_y, None)
         org.regs[Organism.DP_Y] = new_y
         world.set_entity(new_x, new_y, org)
 
-    def _check_toxin(self, org: Organism, x: int, y: int, world: World) -> None:
+    def _check_toxin(
+        self, org: Organism, x: int, y: int, world: World
+    ) -> None:
         cell = world.get_material(x, y)
         if cell == World.TOXIN:
             org.energy -= C_TOUCH_TOX
             world.set_material(x, y, World.EMPTY)
 
-    def _op_cmp(self, org: Organism, ra: int, rb: int) -> None:
-        org.equal_flag = org.regs[self._safe_reg(ra)] == org.regs[self._safe_reg(rb)]
+    def _op_cmp(
+        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+    ) -> None:
+        org.equal_flag = org.regs[self._safe_reg(p1)] == org.regs[self._safe_reg(p2)]
 
-    def _op_jz(self, org: Organism, offset: int) -> None:
+    def _op_jz(
+        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+    ) -> None:
         if org.equal_flag:
-            signed_offset = offset if offset < 128 else offset - 256
+            signed_offset = p1 if p1 < 128 else p1 - 256
             org.pc = (org.pc + signed_offset * 4) % len(org.genome)
         else:
             org.pc = (org.pc + 4) % len(org.genome)
 
-    def _op_jnz(self, org: Organism, offset: int) -> None:
+    def _op_jnz(
+        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+    ) -> None:
         if not org.equal_flag:
-            signed_offset = offset if offset < 128 else offset - 256
+            signed_offset = p1 if p1 < 128 else p1 - 256
             org.pc = (org.pc + signed_offset * 4) % len(org.genome)
         else:
             org.pc = (org.pc + 4) % len(org.genome)
 
-    def _op_jmp(self, org: Organism, offset: int) -> None:
-        signed_offset = offset if offset < 128 else offset - 256
+    def _op_jmp(
+        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+    ) -> None:
+        signed_offset = p1 if p1 < 128 else p1 - 256
         org.pc = (org.pc + signed_offset * 4) % len(org.genome)
 
     def _op_split(
-        self, org: Organism, world: World, population: Population
+        self, org: Organism, _p1: int, _p2: int, _w: World, _pop: Population
     ) -> list[dict]:
-        # SPLIT 已废弃，执行效果等同 NOP
         return []

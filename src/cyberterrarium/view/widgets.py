@@ -8,6 +8,7 @@ import numpy as np
 import pygame
 
 from cyberterrarium.facade.api import ViewAPI
+from cyberterrarium.model.isa import REG_NAMES
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.tools.disassembler import disassemble_with_labels
 from cyberterrarium.view.layout import (
@@ -325,11 +326,10 @@ class InspectorTab:
         my += 5
 
         # ── 寄存器区 ──
-        reg_names = ["R0", "R1", "R2", "R3", "INV", "DP_X", "DP_Y"]
         label = "Regs: "
         surface.blit(self.font_sm.render(label, True, Theme.HIGHLIGHT), (mx, my))
         rx = mx + self.font_sm.size(label)[0]
-        for i, name in enumerate(reg_names):
+        for i, name in enumerate(REG_NAMES):
             val = regs[i]
             txt = f"{name}={val}"
             surface.blit(self.font_sm.render(txt, True, Theme.TEXT), (rx, my))

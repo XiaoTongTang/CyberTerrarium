@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+from cyberterrarium.model.isa import REG_BY_NAME
+from cyberterrarium.model.isa import REG_COUNT as _REG_COUNT
+
 
 @dataclass
 class Organism:
@@ -16,12 +19,12 @@ class Organism:
     age: int              # 存活Tick数
     genome: bytearray     # 基因代码段
 
-    # 寄存器索引常量
-    R0: int = 0
-    R1: int = 1
-    R2: int = 2
-    R3: int = 3
-    INV: int = 4
-    DP_X: int = 5
-    DP_Y: int = 6
-    REG_COUNT: int = 7
+    # 寄存器索引常量（从 isa.REG_TABLE 派生，唯一定义源）
+    R0: int = REG_BY_NAME["R0"].index
+    R1: int = REG_BY_NAME["R1"].index
+    R2: int = REG_BY_NAME["R2"].index
+    R3: int = REG_BY_NAME["R3"].index
+    INV: int = REG_BY_NAME["INV"].index
+    DP_X: int = REG_BY_NAME["DP_X"].index
+    DP_Y: int = REG_BY_NAME["DP_Y"].index
+    REG_COUNT: int = _REG_COUNT

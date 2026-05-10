@@ -8,65 +8,18 @@ Syntax:
 Register names: R0 R1 R2 R3 INV DP_X DP_Y
 Material names: EMPTY NUTRIENT ENZYME TOXIN SIGNAL
 
-Instruction set:
-    NOP
-    MOV Ra, Imm
-    ADD Ra, Rb
-    SUB Ra, Rb
-    AND Ra, Rb
-    OR  Ra, Rb
-    NOT Ra
-    READ_REL Imm_X, Imm_Y
-    READ_ABS Rx, Ry
-    EAT
-    MAKE MaterialID
-    EMIT Imm_X, Imm_Y
-    MOVE_X Rx
-    MOVE_Y Ry
-    CMP Ra, Rb
-    JZ  Label
-    JNZ Label
-    JMP Label
-    SPLIT
+Instruction set is defined in isa.py — this module reads OPCODE_TABLE / REG_TABLE.
 """
 
 from __future__ import annotations
 
-# --- opcode table ---
-OPCODES: dict[str, int] = {
-    "NOP": 0x00,
-    "MOV": 0x01,
-    "ADD": 0x02,
-    "SUB": 0x03,
-    "AND": 0x04,
-    "OR": 0x05,
-    "NOT": 0x06,
-    "READ_REL": 0x09,
-    "READ_ABS": 0x0A,
-    "EAT": 0x0B,
-    "MAKE": 0x0C,
-    "EMIT": 0x0D,
-    "MOVE_X": 0x0E,
-    "MOVE_Y": 0x0F,
-    "CMP": 0x10,
-    "JZ": 0x11,
-    "JNZ": 0x12,
-    "JMP": 0x13,
-    "SPLIT": 0x14,
-}
+from cyberterrarium.model.isa import (
+    OPCODE_BY_NAME,
+    REG_BY_NAME,
+    OperandType,
+)
 
-# --- register name -> index ---
-REGISTERS: dict[str, int] = {
-    "R0": 0x00,
-    "R1": 0x01,
-    "R2": 0x02,
-    "R3": 0x03,
-    "INV": 0x04,
-    "DP_X": 0x05,
-    "DP_Y": 0x06,
-}
-
-# --- material name -> id ---
+# Material name -> id
 MATERIALS: dict[str, int] = {
     "EMPTY": 0,
     "NUTRIENT": 1,
@@ -82,9 +35,9 @@ class AssembleError(Exception):
 
 def _parse_reg(token: str) -> int:
     token = token.upper()
-    if token not in REGISTERS:
+    if token not in REG_BY_NAME:
         raise AssembleError(f"Unknown register: {token}")
-    return REGISTERS[token]
+    return REG_BY_NAME[token].index
 
 
 def _parse_imm(token: str) -> int:
@@ -107,13 +60,36 @@ def _encode_jump_offset(offset: int) -> int:
     return offset if offset >= 0 else offset + 256
 
 
+def _parse_operand(token: str, op_type: OperandType) -> int:
+    """根据操作数类型解析单个操作数。"""
+    if op_type == OperandType.NONE:
+        return 0
+    if op_type == OperandType.REG:
+        return _parse_reg(token)
+    if op_type in (OperandType.IMM, OperandType.OFFSET):
+        return _parse_imm(token) & 0xFF
+    if op_type == OperandType.MAT:
+        return _parse_material_or_imm(token) & 0xFF
+    raise AssembleError(f"Unsupported operand type: {op_type}")
+
+
+def _expected_operand_count(opdef) -> int:
+    """计算期望的操作数数量。"""
+    count = 0
+    if opdef.p1_type != OperandType.NONE:
+        count += 1
+    if opdef.p2_type != OperandType.NONE:
+        count += 1
+    return count
+
+
 def assemble(source: str) -> bytearray:
     """Assemble source text into bytecode. Two-pass: collect labels, then encode."""
     lines = _strip_source(source)
 
     # Pass 1: collect labels and compute instruction addresses
     labels: dict[str, int] = {}
-    instructions: list[tuple[int, str, list[str]]] = []  # (line_no, mnemonic, operands)
+    instructions: list[tuple[int, str, list[str]]] = []
     pc = 0
     for line_no, text in lines:
         if text.endswith(":"):
@@ -155,77 +131,35 @@ def _encode_instruction(
     current_pc: int,
     labels: dict[str, int],
 ) -> bytes:
-    if mnemonic not in OPCODES:
+    opdef = OPCODE_BY_NAME.get(mnemonic)
+    if opdef is None:
         raise AssembleError(f"Line {line_no}: Unknown mnemonic '{mnemonic}'")
 
-    opcode = OPCODES[mnemonic]
+    expected = _expected_operand_count(opdef)
+    if len(operands) != expected:
+        raise AssembleError(
+            f"Line {line_no}: {mnemonic} takes {expected} operand(s), got {len(operands)}"
+        )
 
-    # 0-operand instructions
-    if mnemonic in ("NOP", "EAT", "SPLIT"):
-        if operands:
-            raise AssembleError(f"Line {line_no}: {mnemonic} takes no operands")
-        return bytes([opcode, 0, 0, 0])
+    opcode = opdef.opcode
 
-    # 1-register instructions
-    if mnemonic == "NOT":
-        if len(operands) != 1:
-            raise AssembleError(f"Line {line_no}: NOT takes 1 operand")
-        return bytes([opcode, _parse_reg(operands[0]), 0, 0])
-
-    # MOV Ra, Imm
-    if mnemonic == "MOV":
-        if len(operands) != 2:
-            raise AssembleError(f"Line {line_no}: MOV takes 2 operands")
-        return bytes([opcode, _parse_reg(operands[0]), _parse_imm(operands[1]) & 0xFF, 0])
-
-    # 2-register instructions: ADD SUB AND OR CMP
-    if mnemonic in ("ADD", "SUB", "AND", "OR", "CMP"):
-        if len(operands) != 2:
-            raise AssembleError(f"Line {line_no}: {mnemonic} takes 2 operands")
-        return bytes([opcode, _parse_reg(operands[0]), _parse_reg(operands[1]), 0])
-
-    # READ_REL Imm_X, Imm_Y
-    if mnemonic == "READ_REL":
-        if len(operands) != 2:
-            raise AssembleError(f"Line {line_no}: READ_REL takes 2 operands")
-        return bytes([opcode, _parse_imm(operands[0]) & 0xFF, _parse_imm(operands[1]) & 0xFF, 0])
-
-    # READ_ABS Rx, Ry
-    if mnemonic == "READ_ABS":
-        if len(operands) != 2:
-            raise AssembleError(f"Line {line_no}: READ_ABS takes 2 operands")
-        return bytes([opcode, _parse_reg(operands[0]), _parse_reg(operands[1]), 0])
-
-    # MAKE MaterialID
-    if mnemonic == "MAKE":
-        if len(operands) != 1:
-            raise AssembleError(f"Line {line_no}: MAKE takes 1 operand")
-        return bytes([opcode, _parse_material_or_imm(operands[0]), 0, 0])
-
-    # EMIT Imm_X, Imm_Y
-    if mnemonic == "EMIT":
-        if len(operands) != 2:
-            raise AssembleError(f"Line {line_no}: EMIT takes 2 operands")
-        return bytes([opcode, _parse_imm(operands[0]) & 0xFF, _parse_imm(operands[1]) & 0xFF, 0])
-
-    # MOVE_X Rx / MOVE_Y Ry
-    if mnemonic in ("MOVE_X", "MOVE_Y"):
-        if len(operands) != 1:
-            raise AssembleError(f"Line {line_no}: {mnemonic} takes 1 operand")
-        return bytes([opcode, _parse_reg(operands[0]), 0, 0])
-
-    # Jump instructions: JZ JNZ JMP
-    if mnemonic in ("JZ", "JNZ", "JMP"):
-        if len(operands) != 1:
-            raise AssembleError(f"Line {line_no}: {mnemonic} takes 1 operand")
+    # 解析p1
+    if opdef.p1_type == OperandType.OFFSET:
+        # 跳转偏移：先尝试标签，再尝试原始偏移
         target = operands[0]
-        # Try as label first, then as raw offset
         if target.upper() in labels:
             target_pc = labels[target.upper()]
-            # Compute relative offset in instructions (not bytes)
             rel = (target_pc - (current_pc + 4)) // 4
         else:
             rel = _parse_imm(target)
-        return bytes([opcode, _encode_jump_offset(rel), 0, 0])
+        p1 = _encode_jump_offset(rel)
+    else:
+        p1 = _parse_operand(operands[0], opdef.p1_type) if operands else 0
 
-    raise AssembleError(f"Line {line_no}: Unhandled mnemonic '{mnemonic}'")
+    # 解析p2
+    if opdef.p2_type != OperandType.NONE and len(operands) >= 2:
+        p2 = _parse_operand(operands[1], opdef.p2_type)
+    else:
+        p2 = 0
+
+    return bytes([opcode, p1, p2, 0])
