@@ -22,7 +22,7 @@ REG_TABLE: list[RegDef] = [
     RegDef("R1", 1, True),
     RegDef("R2", 2, True),
     RegDef("R3", 3, True),
-    RegDef("INV", 4, True),
+    RegDef("INV", 4, False),
     RegDef("DP_X", 5, False),
     RegDef("DP_Y", 6, False),
 ]
@@ -33,6 +33,7 @@ REG_BY_NAME: dict[str, RegDef] = {r.name: r for r in REG_TABLE}
 REG_BY_INDEX: dict[int, RegDef] = {r.index: r for r in REG_TABLE}
 REG_NAMES: list[str] = [r.name for r in sorted(REG_TABLE, key=lambda r: r.index)]
 ARITH_WRITABLE_MAX: int = max(r.index for r in REG_TABLE if r.arith_writable)
+DATA_REG_COUNT: int = sum(1 for r in REG_TABLE if r.arith_writable)
 
 
 # ═══════════════════════════════════════════
@@ -62,17 +63,18 @@ class OpcodeDef:
     handler_method: str  # VM中对应的处理方法名
     advances_pc: bool = True  # 是否默认推进PC（跳转指令为False）
     returns_spawn: bool = False  # 是否返回spawn_requests
+    arith_target: bool = False  # p1是否为算术目标寄存器（不可写INV/DP_X/DP_Y）
 
 
 OPCODE_TABLE: list[OpcodeDef] = [
     # 算术
     OpcodeDef(0x00, "NOP", OperandType.NONE, OperandType.NONE, "_op_nop"),
-    OpcodeDef(0x01, "MOV", OperandType.REG, OperandType.IMM, "_op_mov"),
-    OpcodeDef(0x02, "ADD", OperandType.REG, OperandType.REG, "_op_add"),
-    OpcodeDef(0x03, "SUB", OperandType.REG, OperandType.REG, "_op_sub"),
-    OpcodeDef(0x04, "AND", OperandType.REG, OperandType.REG, "_op_and"),
-    OpcodeDef(0x05, "OR", OperandType.REG, OperandType.REG, "_op_or"),
-    OpcodeDef(0x06, "NOT", OperandType.REG, OperandType.NONE, "_op_not"),
+    OpcodeDef(0x01, "MOV", OperandType.REG, OperandType.IMM, "_op_mov", arith_target=True),
+    OpcodeDef(0x02, "ADD", OperandType.REG, OperandType.REG, "_op_add", arith_target=True),
+    OpcodeDef(0x03, "SUB", OperandType.REG, OperandType.REG, "_op_sub", arith_target=True),
+    OpcodeDef(0x04, "AND", OperandType.REG, OperandType.REG, "_op_and", arith_target=True),
+    OpcodeDef(0x05, "OR", OperandType.REG, OperandType.REG, "_op_or", arith_target=True),
+    OpcodeDef(0x06, "NOT", OperandType.REG, OperandType.NONE, "_op_not", arith_target=True),
     # 传感
     OpcodeDef(0x09, "READ_REL", OperandType.IMM, OperandType.IMM, "_op_read_rel"),
     OpcodeDef(0x0A, "READ_ABS", OperandType.REG, OperandType.REG, "_op_read_abs"),
@@ -97,3 +99,4 @@ OPCODE_BY_CODE: dict[int, OpcodeDef] = {op.opcode: op for op in OPCODE_TABLE}
 OPCODE_BY_NAME: dict[str, OpcodeDef] = {op.mnemonic: op for op in OPCODE_TABLE}
 MNEMONIC_BY_CODE: dict[int, str] = {op.opcode: op.mnemonic for op in OPCODE_TABLE}
 PC_ADVANCE_EXEMPT: set[int] = {op.opcode for op in OPCODE_TABLE if not op.advances_pc}
+LEGAL_OPCODES: list[int] = sorted(OPCODE_BY_CODE.keys())

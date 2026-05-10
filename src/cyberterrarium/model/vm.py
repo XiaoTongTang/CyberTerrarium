@@ -11,7 +11,7 @@ from cyberterrarium.model.config import (
     E_NUT,
 )
 from cyberterrarium.model.isa import (
-    ARITH_WRITABLE_MAX,
+    DATA_REG_COUNT,
     OPCODE_BY_CODE,
     PC_ADVANCE_EXEMPT,
     REG_COUNT,
@@ -63,8 +63,8 @@ class VirtualMachine:
         return idx if 0 <= idx < REG_COUNT else 0
 
     def _data_reg(self, idx: int) -> int:
-        """映射到数据寄存器，DP_X/DP_Y返回R0。"""
-        return idx if 0 <= idx <= ARITH_WRITABLE_MAX else 0
+        """映射到通用数据寄存器，INV/DP_X/DP_Y返回R0。"""
+        return idx if 0 <= idx < DATA_REG_COUNT else 0
 
     # ── 统一签名 (org, p1, p2, world, population) ──
 

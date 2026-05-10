@@ -1,6 +1,6 @@
 """实体网格同步测试 - 验证entity_grid与DP坐标的绝对一致性"""
 
-from cyberterrarium.model.config import C_BASE, C_PER_INST, E_BIRTH, NUTRIENT_LIFE, REPRO_ENERGY_MULTIPLIER
+from cyberterrarium.model.config import C_BASE, C_PER_INST, REPRO_ENERGY_MULTIPLIER
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
 from cyberterrarium.model.vm import VirtualMachine
@@ -171,8 +171,8 @@ class TestDataRegProtection:
         assert org.regs[Organism.DP_Y] == 5
         assert org.regs[Organism.R0] == ~0  # 降级到R0
 
-    def test_mov_can_modify_inv(self) -> None:
-        # INV(index=4)在数据寄存器范围内，应可被MOV修改
+    def test_mov_cannot_modify_inv(self) -> None:
+        # INV(index=4)禁止算术指令写入，MOV INV, 2 降级为 MOV R0, 2
         vm = VirtualMachine()
         org = _make_org(
             bytearray([0x01, 0x04, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00]),
@@ -183,7 +183,8 @@ class TestDataRegProtection:
 
         vm.execute_instruction(org, world, pop)
 
-        assert org.regs[Organism.INV] == 2
+        assert org.regs[Organism.INV] == 0  # INV 未被修改
+        assert org.regs[Organism.R0] == 2  # 降级到 R0
 
 
 class TestDeathEntityGridSync:
@@ -210,7 +211,7 @@ class TestBirthEntityGridSync:
 
         world = World(10, 10)
         pop = Population(10)
-        ctrl = SimulationController(world, pop)
+        SimulationController(world, pop)
 
         org_id = pop.spawn(bytearray(8), x=3, y=7)
         org = pop.pool[org_id]
