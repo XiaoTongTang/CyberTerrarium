@@ -92,6 +92,16 @@ OPCODE_TABLE: list[OpcodeDef] = [
     OpcodeDef(0x13, "JMP", OperandType.OFFSET, OperandType.NONE, "_op_jmp", advances_pc=False),
     # 废弃
     OpcodeDef(0x14, "SPLIT", OperandType.NONE, OperandType.NONE, "_op_split"),
+    # 位图映射
+    OpcodeDef(0x15, "MOVE_BMAP", OperandType.REG, OperandType.NONE, "_op_move_bmap"),
+    OpcodeDef(0x16, "ATTACK_BMAP", OperandType.REG, OperandType.NONE, "_op_attack_bmap"),
+    OpcodeDef(
+        0x17, "SCAN_NUT", OperandType.REG, OperandType.NONE, "_op_scan_nut", arith_target=True),
+    OpcodeDef(
+        0x18, "SCAN_TOX", OperandType.REG, OperandType.NONE, "_op_scan_tox", arith_target=True),
+    OpcodeDef(
+        0x19, "SCAN_EMP", OperandType.REG, OperandType.NONE, "_op_scan_emp", arith_target=True),
+    OpcodeDef(0x1A, "EMIT_BMAP", OperandType.REG, OperandType.MAT, "_op_emit_bmap"),
 ]
 
 # 派生

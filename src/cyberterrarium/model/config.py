@@ -9,6 +9,17 @@ C_MAKE_TOX: int = 1        # 合成毒素消耗
 C_TOUCH_TOX: int = 50       # 触碰毒素消耗
 C_MAKE_SIG: int = 2         # 合成信号消耗
 
+# --- 位图攻击参数 ---
+C_ATTACK_BASE: int = 1       # 发动攻击的固定基础消耗
+C_ATTACK_PER_BIT: int = 1    # 攻击范围内每个格子的额外消耗
+C_DAMAGE_PER_HIT: int = 50   # 每命中一格目标生物损失的能量
+C_LEECH_PER_HIT: int = 20    # 每命中一格攻击者恢复的能量
+
+# --- 位图排放参数 ---
+C_EMIT_ENZ: int = 1          # 排放一格酶的基础消耗
+C_EMIT_TOX: int = 1          # 排放一格毒素的基础消耗
+C_EMIT_SIG: float = 0.1      # 排放一格信号的基础消耗
+
 # --- 生命周期参数 ---
 E_BIRTH: int = 150          # 出生初始能量
 C_BASE: int = 150            # 复制基础消耗

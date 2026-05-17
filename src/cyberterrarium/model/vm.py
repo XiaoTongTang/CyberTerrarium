@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+from cyberterrarium.model.bitmap import BMAP_MASK, BMAP_OFFSETS
 from cyberterrarium.model.config import (
+    C_ATTACK_BASE,
+    C_ATTACK_PER_BIT,
+    C_DAMAGE_PER_HIT,
+    C_EMIT_ENZ,
+    C_EMIT_SIG,
+    C_EMIT_TOX,
+    C_LEECH_PER_HIT,
     C_MAKE_ENZ,
     C_MAKE_SIG,
     C_MAKE_TOX,
@@ -229,3 +237,116 @@ class VirtualMachine:
         self, org: Organism, _p1: int, _p2: int, _w: World, _pop: Population
     ) -> list[dict]:
         return []
+
+    # ── 位图映射指令 ──
+
+    def _op_move_bmap(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
+        bmap = org.regs[self._safe_reg(p1)] & BMAP_MASK
+        sum_x = 0
+        sum_y = 0
+        for bit_idx in range(25):
+            if bmap & (1 << bit_idx):
+                dx, dy = BMAP_OFFSETS[bit_idx]
+                sum_x += dx
+                sum_y += dy
+        move_x = max(-2, min(2, sum_x))
+        move_y = max(-2, min(2, sum_y))
+        if move_x == 0 and move_y == 0:
+            return
+        new_x = (org.regs[Organism.DP_X] + move_x) % world.w
+        new_y = (org.regs[Organism.DP_Y] + move_y) % world.h
+        if world.get_entity(new_x, new_y) is not None:
+            return
+        self._check_toxin(org, new_x, new_y, world)
+        old_x = org.regs[Organism.DP_X]
+        old_y = org.regs[Organism.DP_Y]
+        world.set_entity(old_x, old_y, None)
+        org.regs[Organism.DP_X] = new_x
+        org.regs[Organism.DP_Y] = new_y
+        world.set_entity(new_x, new_y, org)
+
+    def _op_attack_bmap(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
+        bmap = org.regs[self._safe_reg(p1)] & BMAP_MASK
+        popcount = bin(bmap).count("1")
+        cost = C_ATTACK_BASE + popcount * C_ATTACK_PER_BIT
+        if org.energy < cost:
+            return
+        org.energy -= cost
+        dp_x = org.regs[Organism.DP_X]
+        dp_y = org.regs[Organism.DP_Y]
+        for bit_idx in range(25):
+            if bmap & (1 << bit_idx):
+                dx, dy = BMAP_OFFSETS[bit_idx]
+                tx = (dp_x + dx) % world.w
+                ty = (dp_y + dy) % world.h
+                target = world.get_entity(tx, ty)
+                if target is not None and target.alive:
+                    target.energy -= C_DAMAGE_PER_HIT
+                    org.energy += C_LEECH_PER_HIT
+
+    def _op_scan_nut(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
+        self._scan_material(org, p1, world, World.NUTRIENT)
+
+    def _op_scan_tox(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
+        self._scan_material(org, p1, world, World.TOXIN)
+
+    def _op_scan_emp(
+        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+    ) -> None:
+        self._scan_material(org, p1, world, World.EMPTY)
+
+    def _scan_material(
+        self, org: Organism, p1: int, world: World, target_mat: int
+    ) -> None:
+        dp_x = org.regs[Organism.DP_X]
+        dp_y = org.regs[Organism.DP_Y]
+        result = 0
+        for bit_idx in range(25):
+            dx, dy = BMAP_OFFSETS[bit_idx]
+            tx = (dp_x + dx) % world.w
+            ty = (dp_y + dy) % world.h
+            if world.get_material(tx, ty) == target_mat:
+                result |= 1 << bit_idx
+        org.regs[self._data_reg(p1)] = result
+
+    @staticmethod
+    def _emit_bmap_cost(mat_id: int, popcount: int) -> int:
+        if mat_id == World.ENZYME:
+            per_cell = C_EMIT_ENZ
+        elif mat_id == World.TOXIN:
+            per_cell = C_EMIT_TOX
+        elif mat_id == World.SIGNAL:
+            per_cell = C_EMIT_SIG
+        else:
+            per_cell = C_EMIT_ENZ
+        return int(popcount * per_cell)
+
+    def _op_emit_bmap(
+        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+    ) -> None:
+        if p2 < World.NUTRIENT or p2 > World.SIGNAL:
+            return
+        bmap = org.regs[self._safe_reg(p1)] & BMAP_MASK
+        popcount = bin(bmap).count("1")
+        cost = self._emit_bmap_cost(p2, popcount)
+        if org.energy < cost:
+            return
+        org.energy -= cost
+        dp_x = org.regs[Organism.DP_X]
+        dp_y = org.regs[Organism.DP_Y]
+        for bit_idx in range(25):
+            if bmap & (1 << bit_idx):
+                dx, dy = BMAP_OFFSETS[bit_idx]
+                tx = (dp_x + dx) % world.w
+                ty = (dp_y + dy) % world.h
+                world.set_material(tx, ty, p2)
+                if p2 == World.SIGNAL:
+                    world.signal_life[ty % world.h, tx % world.w] = 50
