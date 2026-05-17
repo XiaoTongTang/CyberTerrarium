@@ -51,25 +51,54 @@ class SimulationController:
         self.execute_phase_3()
 
     def execute_phase_1(self) -> None:
-        """物理与环境阶段：信号衰减 + 营养衰减 + 营养生成"""
-        # 信号衰减
+        """物理与环境阶段：种植反应 + 信号衰减 + 营养衰减 + 酶衰减 + 营养生成"""
+        grid = self.world.grid
+
+        # Step 0: 种植反应
+        nutrient_mask = grid == World.NUTRIENT
+        enzyme_mask = grid == World.ENZYME
+        nutrient_influence = self._dilate_4(nutrient_mask)
+        triggered_enzymes = enzyme_mask & nutrient_influence
+
+        if triggered_enzymes.any():
+            enzyme_influence = self._dilate_4(triggered_enzymes)
+            trigger_nutrients = nutrient_mask & enzyme_influence
+            new_nutrient_area = self._dilate_3x3(trigger_nutrients)
+            grid[triggered_enzymes] = World.EMPTY
+            self.world.enzyme_life[triggered_enzymes] = 0
+            can_overwrite = (
+                (grid == World.EMPTY)
+                | (grid == World.NUTRIENT)
+                | (grid == World.ENZYME)
+            )
+            write_mask = new_nutrient_area & can_overwrite
+            grid[write_mask] = World.NUTRIENT
+            self.world.nutrient_life[write_mask] = NUTRIENT_LIFE
+
+        # Step 1: 信号衰减
         mask = self.world.signal_life > 0
         self.world.signal_life[mask] -= 1
-        expired = (self.world.signal_life == 0) & (self.world.grid == World.SIGNAL)
-        self.world.grid[expired] = World.EMPTY
+        expired = (self.world.signal_life == 0) & (grid == World.SIGNAL)
+        grid[expired] = World.EMPTY
 
-        # 营养衰减
+        # Step 2: 营养衰减
         nmask = self.world.nutrient_life > 0
         self.world.nutrient_life[nmask] -= 1
-        n_expired = (self.world.nutrient_life == 0) & (self.world.grid == World.NUTRIENT)
-        self.world.grid[n_expired] = World.EMPTY
+        n_expired = (self.world.nutrient_life == 0) & (grid == World.NUTRIENT)
+        grid[n_expired] = World.EMPTY
 
-        # 营养生成：每隔 NUTRIENT_LIFE 个Tick触发一次
+        # Step 3: 酶环境衰减
+        emask = self.world.enzyme_life > 0
+        self.world.enzyme_life[emask] -= 1
+        e_expired = (self.world.enzyme_life == 0) & (grid == World.ENZYME)
+        grid[e_expired] = World.EMPTY
+
+        # Step 4: 营养生成
         self.current_tick += 1
         if self.current_tick % NUTRIENT_LIFE == 0:
-            empty_mask = self.world.grid == World.EMPTY
+            empty_mask = grid == World.EMPTY
             spawn_mask = np_random_mask(empty_mask, NUTRIENT_SPAWN_RATE)
-            self.world.grid[spawn_mask] = World.NUTRIENT
+            grid[spawn_mask] = World.NUTRIENT
             self.world.nutrient_life[spawn_mask] = NUTRIENT_LIFE
 
     def execute_phase_2(self) -> None:
@@ -201,6 +230,7 @@ class SimulationController:
             "world_grid": self.world.grid.copy(),
             "world_signal": self.world.signal_life.copy(),
             "world_nutrient": self.world.nutrient_life.copy(),
+            "world_enzyme": self.world.enzyme_life.copy(),
             "organisms": [],
         }
         for org in self.population.pool:
@@ -223,6 +253,7 @@ class SimulationController:
         self.world.grid = snapshot["world_grid"].copy()
         self.world.signal_life = snapshot["world_signal"].copy()
         self.world.nutrient_life = snapshot["world_nutrient"].copy()
+        self.world.enzyme_life = snapshot["world_enzyme"].copy()
         # 重建实体网格
         self.world.entity_grid = [
             [None for _ in range(self.world.w)] for _ in range(self.world.h)
@@ -242,3 +273,23 @@ class SimulationController:
             )
             if org_id >= 0:
                 self.world.set_entity(x, y, self.population.pool[org_id])
+
+    @staticmethod
+    def _dilate_4(mask: np.ndarray) -> np.ndarray:
+        """4连通膨胀（上下左右），np.roll 天然支持环形边界"""
+        return (
+            mask
+            | np.roll(mask, 1, axis=0)
+            | np.roll(mask, -1, axis=0)
+            | np.roll(mask, 1, axis=1)
+            | np.roll(mask, -1, axis=1)
+        )
+
+    @staticmethod
+    def _dilate_3x3(mask: np.ndarray) -> np.ndarray:
+        """3×3全膨胀（8连通+自身）"""
+        result = mask.copy()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                result |= np.roll(np.roll(mask, dx, axis=0), dy, axis=1)
+        return result

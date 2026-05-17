@@ -17,6 +17,7 @@ from cyberterrarium.model.config import (
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
+    ENZ_LIFE,
     MOVE_BASE,
     MOVE_RATE,
     MOVE_SPRINT,
@@ -178,6 +179,8 @@ class VirtualMachine:
         world.set_material(tx, ty, material)
         if material == World.SIGNAL:
             world.signal_life[ty % world.h, tx % world.w] = 50
+        elif material == World.ENZYME:
+            world.enzyme_life[ty % world.h, tx % world.w] = ENZ_LIFE
         org.regs[Organism.INV] = World.EMPTY
 
     def _op_move_x(
@@ -374,3 +377,5 @@ class VirtualMachine:
                 world.set_material(tx, ty, p2)
                 if p2 == World.SIGNAL:
                     world.signal_life[ty % world.h, tx % world.w] = 50
+                elif p2 == World.ENZYME:
+                    world.enzyme_life[ty % world.h, tx % world.w] = ENZ_LIFE

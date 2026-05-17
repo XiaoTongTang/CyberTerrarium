@@ -23,6 +23,7 @@ class World:
         self.grid = np.zeros((height, width), dtype=np.uint8)
         self.signal_life = np.zeros((height, width), dtype=np.int8)
         self.nutrient_life = np.zeros((height, width), dtype=np.int8)
+        self.enzyme_life = np.zeros((height, width), dtype=np.int8)
         # 实体网格：存储生物对象引用，无生物则为 None
         self.entity_grid: list[list[Organism | None]] = [
             [None for _ in range(width)] for _ in range(height)

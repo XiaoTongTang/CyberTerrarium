@@ -38,6 +38,7 @@ WORLD_WIDTH: int = 200
 WORLD_HEIGHT: int = 200
 NUTRIENT_SPAWN_RATE: float = 0.03  # 每个空白格在营养生成Tick生成营养的概率
 NUTRIENT_LIFE: int = 127  # 营养生命周期（Tick数），归零后变空
+ENZ_LIFE: int = 100      # 酶环境衰减寿命（Tick数），归零后变空
 
 # --- 突变引擎参数 ---
 MUTATION_ENABLED: bool = True
