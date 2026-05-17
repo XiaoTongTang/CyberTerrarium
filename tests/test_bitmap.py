@@ -9,6 +9,9 @@ from cyberterrarium.model.config import (
     C_EMIT_TOX,
     C_LEECH_PER_HIT,
     C_TOUCH_TOX,
+    MOVE_BASE,
+    MOVE_RATE,
+    MOVE_SPRINT,
 )
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -134,7 +137,9 @@ class TestMoveBmap:
 
         assert org.regs[Organism.DP_X] == 6
         assert org.regs[Organism.DP_Y] == 6
-        assert org.energy == 500 - C_TOUCH_TOX
+        # d=2: cost = MOVE_BASE + MOVE_RATE*2 + MOVE_SPRINT*2*1/2
+        move_cost = MOVE_BASE + MOVE_RATE * 2 + MOVE_SPRINT * 2 * 1 // 2
+        assert org.energy == 500 - C_TOUCH_TOX - move_cost
         assert world.get_material(6, 6) == World.EMPTY
 
     def test_empty_bmap_no_move(self) -> None:

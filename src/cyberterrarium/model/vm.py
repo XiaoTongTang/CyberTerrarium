@@ -17,6 +17,9 @@ from cyberterrarium.model.config import (
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
+    MOVE_BASE,
+    MOVE_RATE,
+    MOVE_SPRINT,
 )
 from cyberterrarium.model.isa import (
     DATA_REG_COUNT,
@@ -73,6 +76,13 @@ class VirtualMachine:
     def _data_reg(self, idx: int) -> int:
         """映射到通用数据寄存器，INV/DP_X/DP_Y返回R0。"""
         return idx if 0 <= idx < DATA_REG_COUNT else 0
+
+    @staticmethod
+    def _move_cost(dx: int, dy: int) -> int:
+        d = abs(dx) + abs(dy)
+        if d == 0:
+            return 0
+        return MOVE_BASE + MOVE_RATE * d + MOVE_SPRINT * d * (d - 1) // 2
 
     # ── 统一签名 (org, p1, p2, world, population) ──
 
@@ -173,10 +183,15 @@ class VirtualMachine:
     def _op_move_x(
         self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
     ) -> None:
-        new_x = (org.regs[Organism.DP_X] + org.regs[self._safe_reg(p1)]) % world.w
+        dx = org.regs[self._safe_reg(p1)]
+        new_x = (org.regs[Organism.DP_X] + dx) % world.w
         new_y = org.regs[Organism.DP_Y]
+        cost = self._move_cost(dx, 0)
+        if cost > 0 and org.energy < cost:
+            return
         if world.get_entity(new_x, new_y) is not None:
             return
+        org.energy -= cost
         self._check_toxin(org, new_x, new_y, world)
         old_x = org.regs[Organism.DP_X]
         world.set_entity(old_x, new_y, None)
@@ -186,10 +201,15 @@ class VirtualMachine:
     def _op_move_y(
         self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
     ) -> None:
+        dy = org.regs[self._safe_reg(p1)]
         new_x = org.regs[Organism.DP_X]
-        new_y = (org.regs[Organism.DP_Y] + org.regs[self._safe_reg(p1)]) % world.h
+        new_y = (org.regs[Organism.DP_Y] + dy) % world.h
+        cost = self._move_cost(0, dy)
+        if cost > 0 and org.energy < cost:
+            return
         if world.get_entity(new_x, new_y) is not None:
             return
+        org.energy -= cost
         self._check_toxin(org, new_x, new_y, world)
         old_y = org.regs[Organism.DP_Y]
         world.set_entity(new_x, old_y, None)
@@ -255,10 +275,14 @@ class VirtualMachine:
         move_y = max(-2, min(2, sum_y))
         if move_x == 0 and move_y == 0:
             return
+        cost = self._move_cost(move_x, move_y)
+        if org.energy < cost:
+            return
         new_x = (org.regs[Organism.DP_X] + move_x) % world.w
         new_y = (org.regs[Organism.DP_Y] + move_y) % world.h
         if world.get_entity(new_x, new_y) is not None:
             return
+        org.energy -= cost
         self._check_toxin(org, new_x, new_y, world)
         old_x = org.regs[Organism.DP_X]
         old_y = org.regs[Organism.DP_Y]

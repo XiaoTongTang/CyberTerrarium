@@ -9,6 +9,11 @@ C_MAKE_TOX: int = 1        # 合成毒素消耗
 C_TOUCH_TOX: int = 50       # 触碰毒素消耗
 C_MAKE_SIG: int = 2         # 合成信号消耗
 
+# --- 移动成本参数 ---
+MOVE_BASE: int = 0       # 每次移动的固定启动成本
+MOVE_RATE: int = 0.45       # 每格距离的线性成本
+MOVE_SPRINT: int = 0.2     # 远距离冲刺的二次惩罚系数
+
 # --- 位图攻击参数 ---
 C_ATTACK_BASE: int = 1       # 发动攻击的固定基础消耗
 C_ATTACK_PER_BIT: int = 1    # 攻击范围内每个格子的额外消耗
@@ -31,7 +36,7 @@ MAX_POP: int = 10000        # 最大人口
 # --- 世界参数 ---
 WORLD_WIDTH: int = 200
 WORLD_HEIGHT: int = 200
-NUTRIENT_SPAWN_RATE: float = 0.02  # 每个空白格在营养生成Tick生成营养的概率
+NUTRIENT_SPAWN_RATE: float = 0.03  # 每个空白格在营养生成Tick生成营养的概率
 NUTRIENT_LIFE: int = 127  # 营养生命周期（Tick数），归零后变空
 
 # --- 突变引擎参数 ---

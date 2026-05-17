@@ -7,6 +7,9 @@ from cyberterrarium.model.config import (
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
+    MOVE_BASE,
+    MOVE_RATE,
+    MOVE_SPRINT,
 )
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -438,7 +441,8 @@ class TestMoveX:
         pop = Population(10)
         vm.execute_instruction(org, world, pop)
         assert org.regs[Organism.DP_X] == 6
-        assert org.energy == 200 - C_TOUCH_TOX
+        move_cost = MOVE_BASE + MOVE_RATE * 1
+        assert org.energy == 200 - C_TOUCH_TOX - move_cost
         assert world.get_material(6, 5) == World.EMPTY
 
 
@@ -469,8 +473,84 @@ class TestMoveY:
         pop = Population(10)
         vm.execute_instruction(org, world, pop)
         assert org.regs[Organism.DP_Y] == 6
-        assert org.energy == 200 - C_TOUCH_TOX
+        move_cost = MOVE_BASE + MOVE_RATE * 1
+        assert org.energy == 200 - C_TOUCH_TOX - move_cost
         assert world.get_material(5, 6) == World.EMPTY
+
+
+class TestMoveCost:
+    def test_move_cost_formula_d1(self) -> None:
+        # d=1: cost = MOVE_BASE + MOVE_RATE*1 + MOVE_SPRINT*1*0/2
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x0E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[1, 0, 0, 0, 0, 5, 5],
+            energy=100,
+        )
+        world = _make_world(10, 10)
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        expected = MOVE_BASE + MOVE_RATE * 1
+        assert org.energy == 100 - expected
+
+    def test_move_cost_formula_d3(self) -> None:
+        # d=3: cost = MOVE_BASE + MOVE_RATE*3 + MOVE_SPRINT*3*2/2
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x0E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[3, 0, 0, 0, 0, 5, 5],
+            energy=200,
+        )
+        world = _make_world(10, 10)
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        d = 3
+        expected = MOVE_BASE + MOVE_RATE * d + MOVE_SPRINT * d * (d - 1) // 2
+        assert org.energy == 200 - expected
+
+    def test_move_zero_cost_free(self) -> None:
+        # d=0: 原地不动免费
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x0E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0, 0, 0, 0, 0, 5, 5],
+            energy=100,
+        )
+        world = _make_world(10, 10)
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.energy == 100
+
+    def test_insufficient_energy_blocks_move(self) -> None:
+        # 能量不足 → 移动失败
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x0E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[3, 0, 0, 0, 0, 5, 5],
+            energy=1,  # 远不够
+        )
+        world = _make_world(10, 10)
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.DP_X] == 5  # 未移动
+        assert org.energy == 1  # 未扣费
+
+    def test_collision_no_cost(self) -> None:
+        # 碰撞失败时移动成本也不扣
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x0E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[1, 0, 0, 0, 0, 5, 5],
+            energy=100,
+        )
+        blocker = _make_org(regs=[0, 0, 0, 0, 0, 6, 5])
+        blocker.org_id = 1
+        world = _make_world(10, 10)
+        world.set_entity(6, 5, blocker)
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.DP_X] == 5
+        assert org.energy == 100  # 碰撞不扣费
 
 
 class TestCMP:
