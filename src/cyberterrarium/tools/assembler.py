@@ -80,6 +80,8 @@ def _expected_operand_count(opdef) -> int:
         count += 1
     if opdef.p2_type != OperandType.NONE:
         count += 1
+    if opdef.p3_type != OperandType.NONE:
+        count += 1
     return count
 
 
@@ -162,4 +164,10 @@ def _encode_instruction(
     else:
         p2 = 0
 
-    return bytes([opcode, p1, p2, 0])
+    # 解析p3
+    if opdef.p3_type != OperandType.NONE and len(operands) >= 3:
+        p3 = _parse_operand(operands[2], opdef.p3_type)
+    else:
+        p3 = 0
+
+    return bytes([opcode, p1, p2, p3])

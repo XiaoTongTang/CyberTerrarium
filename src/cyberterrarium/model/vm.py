@@ -48,13 +48,13 @@ class VirtualMachine:
         opcode = bytecode[0]
         p1 = bytecode[1]
         p2 = bytecode[2]
-        _p3 = bytecode[3]  # noqa: F841 - reserved
+        p3 = bytecode[3]
 
         # 查表分发
         opdef = OPCODE_BY_CODE.get(opcode)
         if opdef is not None:
             handler = getattr(self, opdef.handler_method)
-            result = handler(org, p1, p2, world, population)
+            result = handler(org, p1, p2, p3, world, population)
             spawn_requests = (
                 result if opdef.returns_spawn and isinstance(result, list) else []
             )
@@ -85,59 +85,59 @@ class VirtualMachine:
             return 0
         return MOVE_BASE + MOVE_RATE * d + MOVE_SPRINT * d * (d - 1) // 2
 
-    # ── 统一签名 (org, p1, p2, world, population) ──
+    # ── 统一签名 (org, p1, p2, p3, world, population) ──
 
     def _op_nop(
-        self, org: Organism, _p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, _p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         pass
 
     def _op_mov(
-        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] = p2
 
     def _op_add(
-        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] += org.regs[self._safe_reg(p2)]
 
     def _op_sub(
-        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] -= org.regs[self._safe_reg(p2)]
 
     def _op_and(
-        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] &= org.regs[self._safe_reg(p2)]
 
     def _op_or(
-        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] |= org.regs[self._safe_reg(p2)]
 
     def _op_not(
-        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] = ~org.regs[self._data_reg(p1)]
 
     def _op_read_rel(
-        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         tx = (org.regs[Organism.DP_X] + p1) % world.w
         ty = (org.regs[Organism.DP_Y] + p2) % world.h
         org.regs[Organism.R0] = world.get_material(tx, ty)
 
     def _op_read_abs(
-        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         tx = org.regs[self._safe_reg(p1)] % world.w
         ty = org.regs[self._safe_reg(p2)] % world.h
         org.regs[Organism.R0] = world.get_material(tx, ty)
 
     def _op_eat(
-        self, org: Organism, _p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, _p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         cell = world.get_material(org.regs[Organism.DP_X], org.regs[Organism.DP_Y])
         if cell == World.NUTRIENT:
@@ -152,7 +152,7 @@ class VirtualMachine:
             world.nutrient_life[y % world.h, x % world.w] = 0
 
     def _op_make(
-        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         if p1 == World.ENZYME:
             org.energy -= C_MAKE_ENZ
@@ -167,7 +167,7 @@ class VirtualMachine:
             org.energy -= C_MAKE_ENZ
 
     def _op_emit(
-        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         if abs(p1) + abs(p2) > 1:
             return
@@ -184,7 +184,7 @@ class VirtualMachine:
         org.regs[Organism.INV] = World.EMPTY
 
     def _op_move_x(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         dx = org.regs[self._safe_reg(p1)]
         new_x = (org.regs[Organism.DP_X] + dx) % world.w
@@ -202,7 +202,7 @@ class VirtualMachine:
         world.set_entity(new_x, new_y, org)
 
     def _op_move_y(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         dy = org.regs[self._safe_reg(p1)]
         new_x = org.regs[Organism.DP_X]
@@ -228,12 +228,12 @@ class VirtualMachine:
             world.set_material(x, y, World.EMPTY)
 
     def _op_cmp(
-        self, org: Organism, p1: int, p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.equal_flag = org.regs[self._safe_reg(p1)] == org.regs[self._safe_reg(p2)]
 
     def _op_jz(
-        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         if org.equal_flag:
             signed_offset = p1 if p1 < 128 else p1 - 256
@@ -242,7 +242,7 @@ class VirtualMachine:
             org.pc = (org.pc + 4) % len(org.genome)
 
     def _op_jnz(
-        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         if not org.equal_flag:
             signed_offset = p1 if p1 < 128 else p1 - 256
@@ -251,20 +251,20 @@ class VirtualMachine:
             org.pc = (org.pc + 4) % len(org.genome)
 
     def _op_jmp(
-        self, org: Organism, p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         signed_offset = p1 if p1 < 128 else p1 - 256
         org.pc = (org.pc + signed_offset * 4) % len(org.genome)
 
     def _op_split(
-        self, org: Organism, _p1: int, _p2: int, _w: World, _pop: Population
+        self, org: Organism, _p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> list[dict]:
         return []
 
     # ── 位图映射指令 ──
 
     def _op_move_bmap(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         bmap = org.regs[self._safe_reg(p1)] & BMAP_MASK
         sum_x = 0
@@ -295,7 +295,7 @@ class VirtualMachine:
         world.set_entity(new_x, new_y, org)
 
     def _op_attack_bmap(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         bmap = org.regs[self._safe_reg(p1)] & BMAP_MASK
         popcount = bin(bmap).count("1")
@@ -316,17 +316,17 @@ class VirtualMachine:
                     org.energy += C_LEECH_PER_HIT
 
     def _op_scan_nut(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         self._scan_material(org, p1, world, World.NUTRIENT)
 
     def _op_scan_tox(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         self._scan_material(org, p1, world, World.TOXIN)
 
     def _op_scan_emp(
-        self, org: Organism, p1: int, _p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, _p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         self._scan_material(org, p1, world, World.EMPTY)
 
@@ -357,7 +357,7 @@ class VirtualMachine:
         return int(popcount * per_cell)
 
     def _op_emit_bmap(
-        self, org: Organism, p1: int, p2: int, world: World, _pop: Population
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, _pop: Population
     ) -> None:
         if p2 < World.NUTRIENT or p2 > World.SIGNAL:
             return
@@ -379,3 +379,34 @@ class VirtualMachine:
                     world.signal_life[ty % world.h, tx % world.w] = 50
                 elif p2 == World.ENZYME:
                     world.enzyme_life[ty % world.h, tx % world.w] = ENZ_LIFE
+
+    # ── 寄存器操作指令 ──
+
+    def _op_wlo(
+        self, org: Organism, p1: int, p2: int, p3: int, _w: World, _pop: Population
+    ) -> None:
+        reg = self._data_reg(p1)
+        low16 = (p2 << 8) | p3
+        org.regs[reg] = (org.regs[reg] & 0xFFFF0000) | low16
+
+    def _op_whi(
+        self, org: Organism, p1: int, p2: int, p3: int, _w: World, _pop: Population
+    ) -> None:
+        reg = self._data_reg(p1)
+        high16 = (p2 << 8) | p3
+        org.regs[reg] = (org.regs[reg] & 0x0000FFFF) | (high16 << 16)
+
+    def _op_shl(
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] <<= p2
+
+    def _op_shr(
+        self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] >>= p2
+
+    def _op_clr(
+        self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
+    ) -> None:
+        org.regs[self._data_reg(p1)] = 0

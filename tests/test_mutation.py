@@ -32,24 +32,24 @@ def test_no_mutation_when_disabled() -> None:
 class TestNormalizeOpcode:
     def test_legal_opcode_unchanged(self) -> None:
         for opcode in LEGAL_OPCODES:
-            op, _, _ = _normalize_instruction(opcode, 0, 0)
+            op, _, _, _ = _normalize_instruction(opcode, 0, 0, 0)
             assert op == opcode
 
     def test_illegal_opcode_mapped_to_legal(self) -> None:
         for opcode in range(256):
-            op, _, _ = _normalize_instruction(opcode, 0, 0)
+            op, _, _, _ = _normalize_instruction(opcode, 0, 0, 0)
             assert op in OPCODE_BY_CODE
 
     def test_gap_0x07_maps_to_legal(self) -> None:
-        op, _, _ = _normalize_instruction(0x07, 0, 0)
+        op, _, _, _ = _normalize_instruction(0x07, 0, 0, 0)
         assert op == LEGAL_OPCODES[0x07 % len(LEGAL_OPCODES)]
 
     def test_gap_0x08_maps_to_legal(self) -> None:
-        op, _, _ = _normalize_instruction(0x08, 0, 0)
+        op, _, _, _ = _normalize_instruction(0x08, 0, 0, 0)
         assert op == LEGAL_OPCODES[0x08 % len(LEGAL_OPCODES)]
 
     def test_0xff_maps_to_legal(self) -> None:
-        op, _, _ = _normalize_instruction(0xFF, 0, 0)
+        op, _, _, _ = _normalize_instruction(0xFF, 0, 0, 0)
         assert op == LEGAL_OPCODES[0xFF % len(LEGAL_OPCODES)]
 
 
@@ -139,44 +139,52 @@ class TestNormalizePassthrough:
 
 class TestNormalizeInstruction:
     def test_legal_instruction_unchanged(self) -> None:
-        # NOP: opcode=0x00, p1=0(NONE), p2=0(NONE)
-        op, p1, p2 = _normalize_instruction(0x00, 0, 0)
-        assert (op, p1, p2) == (0x00, 0, 0)
+        # NOP: opcode=0x00, p1=0(NONE), p2=0(NONE), p3=0(NONE)
+        op, p1, p2, p3 = _normalize_instruction(0x00, 0, 0, 0)
+        assert (op, p1, p2, p3) == (0x00, 0, 0, 0)
 
     def test_mov_with_legal_operands(self) -> None:
         # MOV R1, 42 → opcode=0x01, p1=1, p2=42
-        op, p1, p2 = _normalize_instruction(0x01, 1, 42)
+        op, p1, p2, _ = _normalize_instruction(0x01, 1, 42, 0)
         assert (op, p1, p2) == (0x01, 1, 42)
 
     def test_mov_arith_target_inv_redirected(self) -> None:
         # MOV INV, 99 → p1=4 should be redirected to R0
-        op, p1, p2 = _normalize_instruction(0x01, 4, 99)
+        op, p1, p2, _ = _normalize_instruction(0x01, 4, 99, 0)
         assert op == 0x01
         assert p1 == 0  # INV(4) % DATA_REG_COUNT(4) = 0 → R0
         assert p2 == 99
 
     def test_add_arith_target_dp_x_redirected(self) -> None:
         # ADD DP_X, R0 → p1=5 should be redirected
-        op, p1, p2 = _normalize_instruction(0x02, 5, 0)
+        op, p1, p2, _ = _normalize_instruction(0x02, 5, 0, 0)
         assert op == 0x02
         assert p1 == 1  # DP_X(5) % 4 = 1 → R1
 
     def test_read_rel_source_reg_not_redirected(self) -> None:
         # READ_REL is not arith_target, so p1=IMM, p2=IMM
-        op, p1, p2 = _normalize_instruction(0x09, 3, 255)
+        op, p1, p2, _ = _normalize_instruction(0x09, 3, 255, 0)
         assert (op, p1, p2) == (0x09, 3, 255)
 
     def test_make_mat_operand_normalized(self) -> None:
         # MAKE with mat=0 should be normalized to valid range
-        op, p1, p2 = _normalize_instruction(0x0C, 0, 0)
+        op, p1, p2, _ = _normalize_instruction(0x0C, 0, 0, 0)
         assert op == 0x0C
         assert 1 <= p1 <= 4
 
     def test_illegal_opcode_with_bad_operands(self) -> None:
         # Opcode 0x07 (gap) + arith target reg=6(DP_Y)
-        op, p1, p2 = _normalize_instruction(0x07, 6, 0)
+        op, p1, p2, _ = _normalize_instruction(0x07, 6, 0, 0)
         assert op in OPCODE_BY_CODE
         # After opcode normalization, check if the new opcode is arith_target
         opdef = OPCODE_BY_CODE[op]
         if opdef.arith_target:
             assert p1 < DATA_REG_COUNT
+
+    def test_wlo_p3_normalized_as_imm(self) -> None:
+        # WLO: p1=REG, p2=IMM, p3=IMM — p3 should pass through
+        op, p1, p2, p3 = _normalize_instruction(0x1B, 0, 0x12, 0x34)
+        assert op == 0x1B
+        assert p1 == 0  # R0
+        assert p2 == 0x12
+        assert p3 == 0x34

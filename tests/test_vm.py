@@ -750,3 +750,184 @@ class TestUnknownOpcode:
         assert result == []
         assert org.pc == 4
         assert org.energy == 500
+
+
+# ── 寄存器操作指令 ──
+
+
+class TestWLO:
+    def test_wlo_loads_low16(self) -> None:
+        # WLO R0, 0x01, 0x23 → R0[15:0] = 0x0123
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1B, 0x00, 0x01, 0x23, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0x0123
+
+    def test_wlo_preserves_high16(self) -> None:
+        # WLO R0, 0x00, 0xFF → R0高16位保持，低16位变为0x00FF
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1B, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0xABCD0000, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0xABCD00FF
+
+    def test_wlo_arith_target_protects_inv(self) -> None:
+        # WLO INV, 0x01, 0x02 → 降级为R0
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1B, 0x04, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0x0102
+
+
+class TestWHI:
+    def test_whi_loads_high16(self) -> None:
+        # WHI R0, 0xAB, 0xCD → R0[31:16] = 0xABCD
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1C, 0x00, 0xAB, 0xCD, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0xABCD0000
+
+    def test_whi_preserves_low16(self) -> None:
+        # WHI R0, 0x00, 0x01 → R0低16位保持，高16位变为0x0001
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1C, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0x00001234, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0x00011234
+
+    def test_whi_arith_target_protects_dp_x(self) -> None:
+        # WHI DP_X → 降级为R0
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1C, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]),
+            regs=[0, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0x00010000
+
+
+class TestSHL:
+    def test_shl_shifts_left(self) -> None:
+        # SHL R0, 4 → R0 = 1 << 4 = 16
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1D, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[1, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 16
+
+    def test_shl_zero_shift_no_change(self) -> None:
+        # SHL R0, 0 → R0不变
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[42, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 42
+
+    def test_shl_large_shift(self) -> None:
+        # SHL R0, 31 → 左移31位
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1D, 0x00, 0x1F, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[1, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 1 << 31
+
+
+class TestSHR:
+    def test_shr_shifts_right(self) -> None:
+        # SHR R0, 2 → R0 = 16 >> 2 = 4
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1E, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[16, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 4
+
+    def test_shr_zero_shift_no_change(self) -> None:
+        # SHR R0, 0 → R0不变
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[42, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 42
+
+    def test_shr_arith_target_protects_dp_y(self) -> None:
+        # SHR DP_Y, 1 → 降级为R0
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1E, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[16, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 8
+
+
+class TestCLR:
+    def test_clr_zeros_register(self) -> None:
+        # CLR R0 → R0 = 0
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[12345, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0
+
+    def test_clr_arith_target_protects_inv(self) -> None:
+        # CLR INV → 降级为R0
+        vm = VirtualMachine()
+        org = _make_org(
+            bytearray([0x1F, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            regs=[99, 0, 0, 0, 0, 0, 0],
+        )
+        world = _make_world()
+        pop = Population(10)
+        vm.execute_instruction(org, world, pop)
+        assert org.regs[Organism.R0] == 0

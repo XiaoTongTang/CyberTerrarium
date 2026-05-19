@@ -35,7 +35,9 @@ def _normalize_operand(
     return value
 
 
-def _normalize_instruction(opcode: int, p1: int, p2: int) -> tuple[int, int, int]:
+def _normalize_instruction(
+    opcode: int, p1: int, p2: int, p3: int
+) -> tuple[int, int, int, int]:
     """将一条指令归一化为合法的 opcode + 操作数组合。"""
     # Opcode 归一化
     if opcode not in OPCODE_BY_CODE:
@@ -46,8 +48,9 @@ def _normalize_instruction(opcode: int, p1: int, p2: int) -> tuple[int, int, int
     # 操作数归一化
     p1 = _normalize_operand(p1, opdef.p1_type, opdef.arith_target)
     p2 = _normalize_operand(p2, opdef.p2_type, False)
+    p3 = _normalize_operand(p3, opdef.p3_type, False)
 
-    return opcode, p1, p2
+    return opcode, p1, p2, p3
 
 
 def apply_mutations(genome: bytearray) -> bytearray:
@@ -64,9 +67,9 @@ def apply_mutations(genome: bytearray) -> bytearray:
             bit_idx = random.randint(0, 7)
             child[byte_idx] ^= 1 << bit_idx
             # 归一化受影响的指令
-            op, p1, p2 = child[i], child[i + 1], child[i + 2]
-            op, p1, p2 = _normalize_instruction(op, p1, p2)
-            child[i], child[i + 1], child[i + 2] = op, p1, p2
+            op, p1, p2, p3_val = child[i], child[i + 1], child[i + 2], child[i + 3]
+            op, p1, p2, p3_val = _normalize_instruction(op, p1, p2, p3_val)
+            child[i], child[i + 1], child[i + 2], child[i + 3] = op, p1, p2, p3_val
 
     # 结构突变：按整个基因组计算概率
     r = random.random()

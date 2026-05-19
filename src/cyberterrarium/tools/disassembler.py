@@ -90,6 +90,8 @@ def _decode_instruction(pc: int, opcode: int, p1: int, p2: int, p3: int) -> str:
         parts.append(_format_operand(p1, opdef.p1_type))
     if opdef.p2_type != OperandType.NONE:
         parts.append(_format_operand(p2, opdef.p2_type))
+    if opdef.p3_type != OperandType.NONE:
+        parts.append(_format_operand(p3, opdef.p3_type))
     return f"0x{pc:04X}: " + " ".join(parts)
 
 
@@ -121,5 +123,7 @@ def _decode_instruction_labeled(
             parts.append(_format_operand(p1, opdef.p1_type))
         if opdef.p2_type != OperandType.NONE:
             parts.append(_format_operand(p2, opdef.p2_type))
+        if opdef.p3_type != OperandType.NONE:
+            parts.append(_format_operand(bytecode[3], opdef.p3_type))
 
     return f"{indent}" + " ".join(parts)

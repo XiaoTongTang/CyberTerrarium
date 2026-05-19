@@ -60,7 +60,8 @@ class OpcodeDef:
     mnemonic: str  # 助记符
     p1_type: OperandType  # 第1操作数类型
     p2_type: OperandType  # 第2操作数类型
-    handler_method: str  # VM中对应的处理方法名
+    p3_type: OperandType = OperandType.NONE  # 第3操作数类型（byte3）
+    handler_method: str = ""  # VM中对应的处理方法名
     advances_pc: bool = True  # 是否默认推进PC（跳转指令为False）
     returns_spawn: bool = False  # 是否返回spawn_requests
     arith_target: bool = False  # p1是否为算术目标寄存器（不可写INV/DP_X/DP_Y）
@@ -68,40 +69,64 @@ class OpcodeDef:
 
 OPCODE_TABLE: list[OpcodeDef] = [
     # 算术
-    OpcodeDef(0x00, "NOP", OperandType.NONE, OperandType.NONE, "_op_nop"),
-    OpcodeDef(0x01, "MOV", OperandType.REG, OperandType.IMM, "_op_mov", arith_target=True),
-    OpcodeDef(0x02, "ADD", OperandType.REG, OperandType.REG, "_op_add", arith_target=True),
-    OpcodeDef(0x03, "SUB", OperandType.REG, OperandType.REG, "_op_sub", arith_target=True),
-    OpcodeDef(0x04, "AND", OperandType.REG, OperandType.REG, "_op_and", arith_target=True),
-    OpcodeDef(0x05, "OR", OperandType.REG, OperandType.REG, "_op_or", arith_target=True),
-    OpcodeDef(0x06, "NOT", OperandType.REG, OperandType.NONE, "_op_not", arith_target=True),
+    OpcodeDef(0x00, "NOP", OperandType.NONE, OperandType.NONE, OperandType.NONE, "_op_nop"),
+    OpcodeDef(0x01, "MOV", OperandType.REG, OperandType.IMM,
+              OperandType.NONE, "_op_mov", arith_target=True),
+    OpcodeDef(0x02, "ADD", OperandType.REG, OperandType.REG,
+               OperandType.NONE, "_op_add", arith_target=True),
+    OpcodeDef(0x03, "SUB", OperandType.REG, OperandType.REG,
+               OperandType.NONE, "_op_sub", arith_target=True),
+    OpcodeDef(0x04, "AND", OperandType.REG, OperandType.REG,
+               OperandType.NONE, "_op_and", arith_target=True),
+    OpcodeDef(0x05, "OR", OperandType.REG, OperandType.REG,
+               OperandType.NONE, "_op_or", arith_target=True),
+    OpcodeDef(0x06, "NOT", OperandType.REG, OperandType.NONE,
+               OperandType.NONE, "_op_not", arith_target=True),
     # 传感
-    OpcodeDef(0x09, "READ_REL", OperandType.IMM, OperandType.IMM, "_op_read_rel"),
-    OpcodeDef(0x0A, "READ_ABS", OperandType.REG, OperandType.REG, "_op_read_abs"),
+    OpcodeDef(0x09, "READ_REL", OperandType.IMM, OperandType.IMM, OperandType.NONE, "_op_read_rel"),
+    OpcodeDef(0x0A, "READ_ABS", OperandType.REG, OperandType.REG, OperandType.NONE, "_op_read_abs"),
     # 代谢
-    OpcodeDef(0x0B, "EAT", OperandType.NONE, OperandType.NONE, "_op_eat"),
-    OpcodeDef(0x0C, "MAKE", OperandType.MAT, OperandType.NONE, "_op_make"),
-    OpcodeDef(0x0D, "EMIT", OperandType.IMM, OperandType.IMM, "_op_emit"),
+    OpcodeDef(0x0B, "EAT", OperandType.NONE, OperandType.NONE, OperandType.NONE, "_op_eat"),
+    OpcodeDef(0x0C, "MAKE", OperandType.MAT, OperandType.NONE, OperandType.NONE, "_op_make"),
+    OpcodeDef(0x0D, "EMIT", OperandType.IMM, OperandType.IMM, OperandType.NONE, "_op_emit"),
     # 运动
-    OpcodeDef(0x0E, "MOVE_X", OperandType.REG, OperandType.NONE, "_op_move_x"),
-    OpcodeDef(0x0F, "MOVE_Y", OperandType.REG, OperandType.NONE, "_op_move_y"),
+    OpcodeDef(0x0E, "MOVE_X", OperandType.REG, OperandType.NONE, OperandType.NONE, "_op_move_x"),
+    OpcodeDef(0x0F, "MOVE_Y", OperandType.REG, OperandType.NONE, OperandType.NONE, "_op_move_y"),
     # 控制
-    OpcodeDef(0x10, "CMP", OperandType.REG, OperandType.REG, "_op_cmp"),
-    OpcodeDef(0x11, "JZ", OperandType.OFFSET, OperandType.NONE, "_op_jz", advances_pc=False),
-    OpcodeDef(0x12, "JNZ", OperandType.OFFSET, OperandType.NONE, "_op_jnz", advances_pc=False),
-    OpcodeDef(0x13, "JMP", OperandType.OFFSET, OperandType.NONE, "_op_jmp", advances_pc=False),
+    OpcodeDef(0x10, "CMP", OperandType.REG, OperandType.REG, OperandType.NONE, "_op_cmp"),
+    OpcodeDef(0x11, "JZ", OperandType.OFFSET, OperandType.NONE,
+               OperandType.NONE, "_op_jz", advances_pc=False),
+    OpcodeDef(0x12, "JNZ", OperandType.OFFSET, OperandType.NONE,
+               OperandType.NONE, "_op_jnz", advances_pc=False),
+    OpcodeDef(0x13, "JMP", OperandType.OFFSET, OperandType.NONE,
+               OperandType.NONE, "_op_jmp", advances_pc=False),
     # 废弃
-    OpcodeDef(0x14, "SPLIT", OperandType.NONE, OperandType.NONE, "_op_split"),
+    OpcodeDef(0x14, "SPLIT", OperandType.NONE, OperandType.NONE,
+               OperandType.NONE, "_op_split"),
     # 位图映射
-    OpcodeDef(0x15, "MOVE_BMAP", OperandType.REG, OperandType.NONE, "_op_move_bmap"),
-    OpcodeDef(0x16, "ATTACK_BMAP", OperandType.REG, OperandType.NONE, "_op_attack_bmap"),
-    OpcodeDef(
-        0x17, "SCAN_NUT", OperandType.REG, OperandType.NONE, "_op_scan_nut", arith_target=True),
-    OpcodeDef(
-        0x18, "SCAN_TOX", OperandType.REG, OperandType.NONE, "_op_scan_tox", arith_target=True),
-    OpcodeDef(
-        0x19, "SCAN_EMP", OperandType.REG, OperandType.NONE, "_op_scan_emp", arith_target=True),
-    OpcodeDef(0x1A, "EMIT_BMAP", OperandType.REG, OperandType.MAT, "_op_emit_bmap"),
+    OpcodeDef(0x15, "MOVE_BMAP", OperandType.REG, OperandType.NONE,
+               OperandType.NONE, "_op_move_bmap"),
+    OpcodeDef(0x16, "ATTACK_BMAP", OperandType.REG, OperandType.NONE,
+               OperandType.NONE, "_op_attack_bmap"),
+    OpcodeDef(0x17, "SCAN_NUT", OperandType.REG, OperandType.NONE,
+          OperandType.NONE, "_op_scan_nut", arith_target=True),
+    OpcodeDef(0x18, "SCAN_TOX", OperandType.REG, OperandType.NONE,
+          OperandType.NONE, "_op_scan_tox", arith_target=True),
+    OpcodeDef(0x19, "SCAN_EMP", OperandType.REG, OperandType.NONE,
+          OperandType.NONE, "_op_scan_emp", arith_target=True),
+    OpcodeDef(0x1A, "EMIT_BMAP", OperandType.REG, OperandType.MAT,
+          OperandType.NONE, "_op_emit_bmap"),
+    # 寄存器操作
+    OpcodeDef(0x1B, "WLO", OperandType.REG, OperandType.IMM,
+        OperandType.IMM, "_op_wlo", arith_target=True),
+    OpcodeDef( 0x1C, "WHI", OperandType.REG, OperandType.IMM,
+        OperandType.IMM, "_op_whi", arith_target=True),
+    OpcodeDef(0x1D, "SHL", OperandType.REG, OperandType.IMM,
+        OperandType.NONE, "_op_shl", arith_target=True),
+    OpcodeDef(0x1E, "SHR", OperandType.REG, OperandType.IMM,
+        OperandType.NONE, "_op_shr", arith_target=True),
+    OpcodeDef(0x1F, "CLR", OperandType.REG, OperandType.NONE,
+        OperandType.NONE, "_op_clr", arith_target=True),
 ]
 
 # 派生
