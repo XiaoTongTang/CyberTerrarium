@@ -148,7 +148,7 @@ class SimulationController:
                 for dy in range(-1, 2):
                     nx, ny = (dp_x + dx) % self.world.w, (dp_y + dy) % self.world.h
                     if (
-                        self.world.get_material(nx, ny) == World.EMPTY
+                        self.world.get_material(nx, ny) != World.TOXIN
                         and self.world.get_entity(nx, ny) is None
                     ):
                         empty_positions.append((nx, ny))

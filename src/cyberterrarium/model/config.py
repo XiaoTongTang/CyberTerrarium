@@ -3,7 +3,7 @@
 # --- 能量参数 ---
 E_NUT: int = 200            # 单格营养能量
 E_ENZ_EAT: int = 600        # 酶促进食能量
-C_INST: int = 1             # 单条指令消耗（脑力税）
+C_INST: int = 0.5             # 单条指令消耗（脑力税）
 C_MAKE_ENZ: int = 10        # 合成酶消耗
 C_MAKE_TOX: int = 1        # 合成毒素消耗
 C_TOUCH_TOX: int = 50       # 触碰毒素消耗
@@ -26,12 +26,12 @@ C_EMIT_TOX: int = 1          # 排放一格毒素的基础消耗
 C_EMIT_SIG: float = 0.1      # 排放一格信号的基础消耗
 
 # --- 生命周期参数 ---
-E_BIRTH: int = 150          # 出生初始能量
-C_BASE: int = 150            # 复制基础消耗
+E_BIRTH: int = 700          # 出生初始能量
+C_BASE: int = 700            # 复制基础消耗
 C_PER_INST: int = 1         # 复制单条指令消耗
 REPRO_ENERGY_MULTIPLIER: float = 5.0  # 繁殖所需能量的倍数阈值
-AGE_LIMIT: int = 3000      # 最大年龄（Tick数）
-MAX_POP: int = 10000        # 最大人口
+AGE_LIMIT: int = 1000      # 最大年龄（Tick数）
+MAX_POP: int = 2000        # 最大人口
 
 # --- 世界参数 ---
 WORLD_WIDTH: int = 200

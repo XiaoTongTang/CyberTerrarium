@@ -4,6 +4,11 @@
       "name": "Grazer",
       "assembly": "MOV R0, 1\nMOVE_X R0\nEAT\nJMP -2",
       "count": 200
+    },
+    {
+      "name": "Grazer2",
+      "assembly": "WLO R1, 255, 255\nEMIT_BMAP R1, 2\nEAT\nEAT\nEAT\nEAT\n",
+      "count": 100
     }
   ]
 }
