@@ -127,6 +127,11 @@ OPCODE_TABLE: list[OpcodeDef] = [
         OperandType.NONE, "_op_shr", arith_target=True),
     OpcodeDef(0x1F, "CLR", OperandType.REG, OperandType.NONE,
         OperandType.NONE, "_op_clr", arith_target=True),
+    # 生物扫描
+    OpcodeDef(0x2A, "SCAN_BIO_G", OperandType.REG, OperandType.IMM,
+        OperandType.NONE, "_op_scan_bio_g", arith_target=True),
+    OpcodeDef(0x2B, "SCAN_BIO_L", OperandType.REG, OperandType.IMM,
+        OperandType.NONE, "_op_scan_bio_l", arith_target=True),
 ]
 
 # 派生

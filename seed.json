@@ -9,6 +9,11 @@
       "name": "Grazer2",
       "assembly": "WLO R1, 255, 255\nEMIT_BMAP R1, 2\nEAT\nEAT\nEAT\nEAT\n",
       "count": 100
+    },
+    {
+      "name": "MoveFarmer3",
+      "assembly": "SCAN_EMP R1\n EMIT_BMAP R1 ENZYME \n EAT \n EAT\n MOVE_BMAP R0 \n READ_REL 0 0\n EAT",
+      "count": 100
     }
   ]
 }

@@ -18,6 +18,7 @@ class Organism:
     energy: int           # 当前能量
     age: int              # 存活Tick数
     genome: bytearray     # 基因代码段
+    fingerprint: set[int] | None = None  # Winnowing基因指纹缓存
 
     # 寄存器索引常量（从 isa.REG_TABLE 派生，唯一定义源）
     R0: int = REG_BY_NAME["R0"].index

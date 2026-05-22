@@ -16,6 +16,7 @@ from cyberterrarium.model.config import (
     REPRO_ENERGY_MULTIPLIER,
 )
 from cyberterrarium.model.mutation import apply_mutations
+from cyberterrarium.model.fingerprint import compute_fingerprint
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
 from cyberterrarium.model.vm import VirtualMachine
@@ -172,6 +173,7 @@ class SimulationController:
             )
             if org_id >= 0:
                 org = self.population.pool[org_id]
+                org.fingerprint = compute_fingerprint(org.genome)
                 self.world.set_entity(req["x"], req["y"], org)
                 self._emit_event("birth", {
                     "tick": self.current_tick,
@@ -243,6 +245,7 @@ class SimulationController:
                         "energy": org.energy,
                         "age": org.age,
                         "genome": bytearray(org.genome),
+                        "fingerprint": list(org.fingerprint) if org.fingerprint is not None else None,
                     }
                 )
         return snapshot
@@ -272,7 +275,10 @@ class SimulationController:
                 energy=org_data["energy"],
             )
             if org_id >= 0:
-                self.world.set_entity(x, y, self.population.pool[org_id])
+                org = self.population.pool[org_id]
+                fp_data = org_data.get("fingerprint")
+                org.fingerprint = set(fp_data) if fp_data is not None else None
+                self.world.set_entity(x, y, org)
 
     @staticmethod
     def _dilate_4(mask: np.ndarray) -> np.ndarray:

@@ -14,6 +14,7 @@ from cyberterrarium.model.config import (
     C_MAKE_ENZ,
     C_MAKE_SIG,
     C_MAKE_TOX,
+    C_SCAN_BIO,
     C_TOUCH_TOX,
     E_ENZ_EAT,
     E_NUT,
@@ -410,3 +411,51 @@ class VirtualMachine:
         self, org: Organism, p1: int, _p2: int, _p3: int, _w: World, _pop: Population
     ) -> None:
         org.regs[self._data_reg(p1)] = 0
+
+    # ── 生物扫描指令 ──
+
+    def _scan_bio(
+        self, org: Organism, p1: int, p2: int, world: World, population: Population, greater: bool
+    ) -> None:
+        if org.energy < C_SCAN_BIO:
+            return
+        org.energy -= C_SCAN_BIO
+
+        threshold = p2 / 127.0
+        dp_x = org.regs[Organism.DP_X]
+        dp_y = org.regs[Organism.DP_Y]
+        f_self = org.fingerprint
+        result = 0
+
+        for bit_idx in range(25):
+            dx, dy = BMAP_OFFSETS[bit_idx]
+            if dx == 0 and dy == 0:
+                continue
+            tx = (dp_x + dx) % world.w
+            ty = (dp_y + dy) % world.h
+            target = world.get_entity(tx, ty)
+            if target is None or not target.alive:
+                continue
+            f_target = target.fingerprint
+            if f_self is None or f_target is None or len(f_self) == 0 or len(f_target) == 0:
+                sim = 0.0
+            else:
+                intersection = len(f_self & f_target)
+                union = len(f_self | f_target)
+                sim = intersection / union if union > 0 else 0.0
+            if greater and sim > threshold:
+                result |= 1 << bit_idx
+            elif not greater and sim < threshold:
+                result |= 1 << bit_idx
+
+        org.regs[self._data_reg(p1)] = result
+
+    def _op_scan_bio_g(
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, population: Population
+    ) -> None:
+        self._scan_bio(org, p1, p2, world, population, greater=True)
+
+    def _op_scan_bio_l(
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, population: Population
+    ) -> None:
+        self._scan_bio(org, p1, p2, world, population, greater=False)

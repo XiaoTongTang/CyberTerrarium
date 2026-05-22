@@ -275,6 +275,9 @@ class InspectorTab:
         self.font: pygame.font.Font | None = None
         self.font_sm: pygame.font.Font | None = None
         self.scroll_offset: int = 0
+        self._copy_btn_rect: tuple[int, int, int, int] | None = None
+        self._copy_btn_text: str = ""
+        self._copy_btn_timer: int = 0
 
     def init_fonts(self, font_sm: pygame.font.Font, font_md: pygame.font.Font) -> None:
         self.font = font_md
@@ -359,6 +362,20 @@ class InspectorTab:
             self.font_sm, pc,
         )
 
+        # ── 拷贝汇编按钮 ──
+        btn_label = self._copy_btn_text or "Copy ASM"
+        btn_w = self.font_sm.size(btn_label)[0] + 16
+        btn_h = 22
+        btn_x = x + w - btn_w - 8
+        btn_y = my + 3
+        btn_color = Theme.SUCCESS if self._copy_btn_text else Theme.HIGHLIGHT
+        pygame.draw.rect(surface, btn_color, (btn_x, btn_y, btn_w, btn_h), border_radius=3)
+        btn_txt = self.font_sm.render(btn_label, True, (0, 0, 0))
+        surface.blit(btn_txt, (btn_x + (btn_w - btn_txt.get_width()) // 2,
+                                btn_y + (btn_h - btn_txt.get_height()) // 2))
+        self._copy_btn_rect = (btn_x, btn_y, btn_w, btn_h)
+        self._copy_btn_genome = genome
+
         # ── 局部环境 9x9 ──
         pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
         my += 3
@@ -381,6 +398,29 @@ class InspectorTab:
         cx = env_x0 + 4 * cell_size
         cy = my + 4 * cell_size
         pygame.draw.rect(surface, Theme.HIGHLIGHT, (cx, cy, cell_size - 1, cell_size - 1), 2)
+
+    def handle_click(self, mx: int, my: int) -> None:
+        if self._copy_btn_rect is None:
+            return
+        bx, by, bw, bh = self._copy_btn_rect
+        if bx <= mx <= bx + bw and by <= my <= by + bh:
+            asm = disassemble_with_labels(self._copy_btn_genome)
+            text = "\n".join(asm)
+            try:
+                import pyperclip
+                pyperclip.copy(text)
+            except ImportError:
+                pygame.scrap.init()
+                pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8"))
+            self._copy_btn_text = "Copied!"
+            self._copy_btn_timer = 60
+
+    def tick(self) -> None:
+        if self._copy_btn_timer > 0:
+            self._copy_btn_timer -= 1
+            if self._copy_btn_timer == 0:
+                self._copy_btn_text = ""
+
 
 
 class LogTab:
@@ -484,6 +524,9 @@ class RightPanel:
         if self.active_tab == 2:
             content_rect = self._content_rect()
             self.log.handle_click(mx, my, content_rect)
+        # Inspector Tab按钮
+        elif self.active_tab == 1:
+            self.inspector.handle_click(mx, my)
 
     def _content_rect(self) -> tuple[int, int, int, int]:
         px, py, pw, ph = RIGHT_PANEL
@@ -513,5 +556,6 @@ class RightPanel:
             self.stats.render(surface, content_rect)
         elif self.active_tab == 1:
             self.inspector.render(surface, content_rect, selected_org_id)
+            self.inspector.tick()
         elif self.active_tab == 2:
             self.log.render(surface, content_rect)

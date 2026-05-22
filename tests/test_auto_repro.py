@@ -72,17 +72,17 @@ class TestAutoRepro:
         ctrl.execute_phase_repro()
         assert len(ctrl._spawn_queue) == 0
 
-    # 场景：周围无空格时不繁殖
-    def test_no_empty_neighbors_no_repro(self) -> None:
+    # 场景：周围全是毒素时不繁殖
+    def test_no_nontoxic_neighbors_no_repro(self) -> None:
         ctrl = _make_controller(3, 3)
         # 在(1,1)放一个高能量生物
         cost = C_BASE + 8 * C_PER_INST
         threshold = int(cost * REPRO_ENERGY_MULTIPLIER)
         _spawn_org(ctrl, 1, 1, energy=threshold + 100)
-        # 填满所有9个格子为营养
+        # 填满所有9个格子为毒素
         for y in range(3):
             for x in range(3):
-                ctrl.world.set_material(x, y, World.NUTRIENT)
+                ctrl.world.set_material(x, y, World.TOXIN)
         ctrl._rebuild_alive_cache()
 
         ctrl.execute_phase_repro()

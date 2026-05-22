@@ -25,6 +25,9 @@ C_EMIT_ENZ: int = 1          # 排放一格酶的基础消耗
 C_EMIT_TOX: int = 1          # 排放一格毒素的基础消耗
 C_EMIT_SIG: float = 0.1      # 排放一格信号的基础消耗
 
+# --- 生物扫描参数 ---
+C_SCAN_BIO: int = 3          # SCAN_BIO指令执行消耗
+
 # --- 生命周期参数 ---
 E_BIRTH: int = 700          # 出生初始能量
 C_BASE: int = 700            # 复制基础消耗
