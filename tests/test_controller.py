@@ -212,6 +212,7 @@ class TestEnzymeDecay:
     def test_enzyme_expires(self) -> None:
         # 酶生命值归零后变为空地
         ctrl = _make_controller(5, 5)
+        ctrl.current_tick = 50  # 避免触发营养生成周期
         grid = ctrl.world.grid
         grid[2, 2] = World.ENZYME
         ctrl.world.enzyme_life[2, 2] = 1

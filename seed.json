@@ -6,14 +6,19 @@
       "count": 200
     },
     {
-      "name": "Grazer2",
+      "name": "FixFarmer",
       "assembly": "WLO R1, 255, 255\nEMIT_BMAP R1, 2\nEAT\nEAT\nEAT\nEAT\n",
       "count": 100
     },
     {
+      "name": "Predator",
+      "assembly": "MOV R0, 4\nMOVE_Y R0\nSCAN_BIO_L R2 100\nATTACK_BMAP R2\nEAT",
+      "count": 200
+    },
+    {
       "name": "MoveFarmer3",
       "assembly": "SCAN_EMP R1\n EMIT_BMAP R1 ENZYME \n EAT \n EAT\n MOVE_BMAP R0 \n READ_REL 0 0\n EAT",
-      "count": 100
+      "count": 10
     }
   ]
 }

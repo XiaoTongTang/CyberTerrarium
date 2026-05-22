@@ -15,8 +15,8 @@ from cyberterrarium.model.config import (
     NUTRIENT_SPAWN_RATE,
     REPRO_ENERGY_MULTIPLIER,
 )
-from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.fingerprint import compute_fingerprint
+from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
 from cyberterrarium.model.vm import VirtualMachine
@@ -96,7 +96,7 @@ class SimulationController:
 
         # Step 4: 营养生成
         self.current_tick += 1
-        if self.current_tick % NUTRIENT_LIFE == 0:
+        if self.current_tick % NUTRIENT_LIFE == 1:
             empty_mask = grid == World.EMPTY
             spawn_mask = np_random_mask(empty_mask, NUTRIENT_SPAWN_RATE)
             grid[spawn_mask] = World.NUTRIENT
@@ -245,7 +245,8 @@ class SimulationController:
                         "energy": org.energy,
                         "age": org.age,
                         "genome": bytearray(org.genome),
-                        "fingerprint": list(org.fingerprint) if org.fingerprint is not None else None,
+                        "fingerprint": list(org.fingerprint)
+                            if org.fingerprint is not None else None
                     }
                 )
         return snapshot

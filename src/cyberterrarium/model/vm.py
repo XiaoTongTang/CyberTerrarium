@@ -443,7 +443,7 @@ class VirtualMachine:
                 intersection = len(f_self & f_target)
                 union = len(f_self | f_target)
                 sim = intersection / union if union > 0 else 0.0
-            if greater and sim > threshold:
+            if greater and sim > threshold:  # noqa: SIM114
                 result |= 1 << bit_idx
             elif not greater and sim < threshold:
                 result |= 1 << bit_idx
