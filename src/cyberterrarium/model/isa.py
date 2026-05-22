@@ -132,6 +132,11 @@ OPCODE_TABLE: list[OpcodeDef] = [
         OperandType.NONE, "_op_scan_bio_g", arith_target=True),
     OpcodeDef(0x2B, "SCAN_BIO_L", OperandType.REG, OperandType.IMM,
         OperandType.NONE, "_op_scan_bio_l", arith_target=True),
+    # 选择性攻击
+    OpcodeDef(0x2C, "ATTACK_L", OperandType.REG, OperandType.IMM,
+        OperandType.NONE, "_op_attack_l", arith_target=True),
+    OpcodeDef(0x2D, "ATTACK_G", OperandType.REG, OperandType.IMM,
+        OperandType.NONE, "_op_attack_g", arith_target=True),
 ]
 
 # 派生

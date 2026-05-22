@@ -268,6 +268,7 @@ class TestPhase1Ordering:
     def test_enzyme_decay_after_planting(self) -> None:
         # 酶衰减在种植反应之后：未触发酶正常衰减
         ctrl = _make_controller(7, 7)
+        ctrl.current_tick = 50  # 避免触发营养生成周期
         grid = ctrl.world.grid
         grid[1, 1] = World.NUTRIENT
         ctrl.world.nutrient_life[1, 1] = NUTRIENT_LIFE

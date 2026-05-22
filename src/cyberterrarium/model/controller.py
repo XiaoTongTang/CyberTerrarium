@@ -112,6 +112,9 @@ class SimulationController:
             org.age += 1
 
         for org in alive_list:
+            # 跳过已在本Tick中被杀死的生物（如被其他生物攻击致死）
+            if not org.alive:
+                continue
             # 年龄判死
             if org.age >= AGE_LIMIT:
                 self._kill_and_corpse(org)
@@ -168,6 +171,9 @@ class SimulationController:
     def execute_phase_3(self) -> None:
         """繁衍结算阶段"""
         for req in self._spawn_queue:
+            # 位置已被先处理的子代占用则跳过，防止覆盖产生幽灵生物
+            if self.world.get_entity(req["x"], req["y"]) is not None:
+                continue
             org_id = self.population.spawn(
                 genome=req["genome"], x=req["x"], y=req["y"], energy=E_BIRTH
             )

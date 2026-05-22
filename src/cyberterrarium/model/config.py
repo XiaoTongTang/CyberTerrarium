@@ -16,8 +16,8 @@ MOVE_SPRINT: int = 1     # 远距离冲刺的二次惩罚系数
 
 # --- 位图攻击参数 ---
 C_ATTACK_BASE: int = 1       # 发动攻击的固定基础消耗
-C_ATTACK_PER_BIT: int = 1    # 攻击范围内每个格子的额外消耗
-C_DAMAGE_PER_HIT: int = 50   # 每命中一格目标生物损失的能量
+C_ATTACK_PER_BIT: int = 3    # 攻击范围内每个格子的额外消耗
+C_DAMAGE_PER_HIT: int = 55   # 每命中一格目标生物损失的能量
 C_LEECH_PER_HIT: int = 50    # 每命中一格攻击者恢复的能量
 
 # --- 位图排放参数 ---
@@ -34,7 +34,7 @@ C_BASE: int = 700            # 复制基础消耗
 C_PER_INST: int = 1         # 复制单条指令消耗
 REPRO_ENERGY_MULTIPLIER: float = 5.0  # 繁殖所需能量的倍数阈值
 AGE_LIMIT: int = 1000      # 最大年龄（Tick数）
-MAX_POP: int = 5000        # 最大人口
+MAX_POP: int = 1000        # 最大人口
 
 # --- 世界参数 ---
 WORLD_WIDTH: int = 100

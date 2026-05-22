@@ -421,7 +421,7 @@ class VirtualMachine:
             return
         org.energy -= C_SCAN_BIO
 
-        threshold = p2 / 127.0
+        threshold = p2 / 255.0
         dp_x = org.regs[Organism.DP_X]
         dp_y = org.regs[Organism.DP_Y]
         f_self = org.fingerprint
@@ -459,3 +459,17 @@ class VirtualMachine:
         self, org: Organism, p1: int, p2: int, _p3: int, world: World, population: Population
     ) -> None:
         self._scan_bio(org, p1, p2, world, population, greater=False)
+
+    # ── 选择性攻击指令 ──
+
+    def _op_attack_l(
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, population: Population
+    ) -> None:
+        self._scan_bio(org, p1, p2, world, population, greater=False)
+        self._op_attack_bmap(org, p1, 0, 0, world, population)
+
+    def _op_attack_g(
+        self, org: Organism, p1: int, p2: int, _p3: int, world: World, population: Population
+    ) -> None:
+        self._scan_bio(org, p1, p2, world, population, greater=True)
+        self._op_attack_bmap(org, p1, 0, 0, world, population)

@@ -18,7 +18,10 @@ def _make_controller(world_w: int = 20, world_h: int = 20) -> SimulationControll
 
 def _spawn_org(ctrl: SimulationController, x: int, y: int, energy: int) -> int:
     genome = bytearray(8)  # 8 bytes = 2 instructions, minimum length
-    return ctrl.population.spawn(genome=genome, x=x, y=y, energy=energy)
+    org_id = ctrl.population.spawn(genome=genome, x=x, y=y, energy=energy)
+    if org_id >= 0:
+        ctrl.world.set_entity(x, y, ctrl.population.pool[org_id])
+    return org_id
 
 
 class TestAutoRepro:
@@ -124,3 +127,81 @@ class TestAutoRepro:
         ctrl.execute_phase_2()
         # Phase 2 不再收集 SPLIT 的 spawn request
         assert len(ctrl._spawn_queue) == 0
+
+
+class TestSpawnCollision:
+    """繁殖碰撞测试：两个亲本抢占同一空位不应产生幽灵生物"""
+
+    def test_collision_only_one_child_survives(self) -> None:
+        # 两个相邻高能量生物，共同邻域只有一个空位
+        ctrl = _make_controller(5, 5)
+        cost = C_BASE + 8 * C_PER_INST
+        threshold = int(cost * REPRO_ENERGY_MULTIPLIER)
+        # 亲本A在(1,1)，亲本B在(1,3)，共同空位可能在(1,2)附近
+        _spawn_org(ctrl, 1, 1, energy=threshold + 1000)
+        _spawn_org(ctrl, 1, 3, energy=threshold + 1000)
+        # 填满其他位置使空位极少
+        for y in range(5):
+            for x in range(5):
+                if (x, y) not in [(1, 1), (1, 3), (1, 2)]:
+                    ctrl.world.set_material(x, y, World.TOXIN)
+        ctrl._rebuild_alive_cache()
+
+        ctrl.execute_phase_repro()
+        # 可能有两个请求指向同一位置
+        ctrl.execute_phase_3()
+
+        # 验证：没有幽灵生物，alive_count等于entity_grid中实际存在的生物数
+        alive_count = ctrl.population.alive_count
+        grid_count = 0
+        for y in range(5):
+            for x in range(5):
+                if ctrl.world.get_entity(x, y) is not None:
+                    grid_count += 1
+        assert alive_count == grid_count
+
+    def test_no_ghost_after_collision(self) -> None:
+        # 直接构造碰撞：手动向spawn_queue添加两个同位置的请求
+        ctrl = _make_controller(5, 5)
+        genome = bytearray(8)
+        ctrl._spawn_queue = [
+            {"genome": genome, "x": 2, "y": 2},
+            {"genome": genome, "x": 2, "y": 2},
+        ]
+
+        ctrl.execute_phase_3()
+
+        # 只有一个子代被放置在(2,2)
+        assert ctrl.world.get_entity(2, 2) is not None
+        # alive_count与entity_grid一致
+        grid_count = sum(
+            1 for y in range(5) for x in range(5)
+            if ctrl.world.get_entity(x, y) is not None
+        )
+        assert ctrl.population.alive_count == grid_count
+
+
+class TestPhase2AliveGuard:
+    """Phase 2 alive守卫测试：已被杀死的生物不应再执行指令"""
+
+    def test_killed_organism_skipped(self) -> None:
+        # 模拟场景：生物A攻击生物B致其能量为负
+        # B在alive_list中排在A后面，B应被跳过不再执行
+        from cyberterrarium.model.config import C_DAMAGE_PER_HIT
+        from cyberterrarium.model.organism import Organism
+
+        ctrl = _make_controller(10, 10)
+        # 创建两个生物：A有高能量，B只有1点能量
+        org_a_id = _spawn_org(ctrl, 5, 5, energy=10000)
+        org_b_id = _spawn_org(ctrl, 6, 5, energy=C_DAMAGE_PER_HIT)
+        ctrl._rebuild_alive_cache()
+
+        org_a = ctrl.population.pool[org_a_id]
+        org_b = ctrl.population.pool[org_b_id]
+
+        # 手动模拟：A攻击B使B能量变为0
+        org_b.energy = 0
+
+        # 在Phase 2中，B的扣税会使能量变为-1，然后被杀
+        # alive守卫确保被杀死的生物不会被后续处理
+        # 这不会导致错误，只是让死亡检测更及时

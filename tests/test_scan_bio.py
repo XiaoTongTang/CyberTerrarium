@@ -53,9 +53,9 @@ class TestScanBioG:
         vm = VirtualMachine()
         genome = _genome_a()
         fp = compute_fingerprint(genome)
-        # SCAN_BIO_G R0, 64 (threshold = 64/127 ≈ 0.504)
+        # SCAN_BIO_G R0, 128 (threshold = 128/255 ≈ 0.502)
         org = _make_org(
-            bytearray([0x2A, 0x00, 0x40, 0x00]),
+            bytearray([0x2A, 0x00, 0x80, 0x00]),
             regs=[0, 0, 0, 0, 0, 5, 5],
             fingerprint=fp,
         )
@@ -76,9 +76,9 @@ class TestScanBioG:
         vm = VirtualMachine()
         fp_a = compute_fingerprint(_genome_a())
         fp_b = compute_fingerprint(_genome_b())
-        # SCAN_BIO_G R0, 114 (threshold ≈ 0.898)
+        # SCAN_BIO_G R0, 230 (threshold = 230/255 ≈ 0.902)
         org = _make_org(
-            bytearray([0x2A, 0x00, 0x72, 0x00]),
+            bytearray([0x2A, 0x00, 0xE6, 0x00]),
             regs=[0, 0, 0, 0, 0, 5, 5],
             fingerprint=fp_a,
         )
@@ -244,9 +244,9 @@ class TestScanBioG:
         vm = VirtualMachine()
         fp = compute_fingerprint(_genome_a())
         fp_b = compute_fingerprint(_genome_b())
-        # SCAN_BIO_G R0, 64 (threshold ≈ 0.504)
+        # SCAN_BIO_G R0, 128 (threshold = 128/255 ≈ 0.502)
         org = _make_org(
-            bytearray([0x2A, 0x00, 0x40, 0x00]),
+            bytearray([0x2A, 0x00, 0x80, 0x00]),
             regs=[0, 0, 0, 0, 0, 5, 5],
             fingerprint=fp,
         )
@@ -278,9 +278,9 @@ class TestScanBioL:
         vm = VirtualMachine()
         fp_a = compute_fingerprint(_genome_a())
         fp_b = compute_fingerprint(_genome_b())
-        # SCAN_BIO_L R0, 64 (threshold ≈ 0.504)
+        # SCAN_BIO_L R0, 128 (threshold = 128/255 ≈ 0.502)
         org = _make_org(
-            bytearray([0x2B, 0x00, 0x40, 0x00]),
+            bytearray([0x2B, 0x00, 0x80, 0x00]),
             regs=[0, 0, 0, 0, 0, 5, 5],
             fingerprint=fp_a,
         )
@@ -299,9 +299,9 @@ class TestScanBioL:
         # 相同基因组 → Jaccard=1.0，不满足 < 0.5
         vm = VirtualMachine()
         fp = compute_fingerprint(_genome_a())
-        # SCAN_BIO_L R0, 64 (threshold ≈ 0.504)
+        # SCAN_BIO_L R0, 128 (threshold = 128/255 ≈ 0.502)
         org = _make_org(
-            bytearray([0x2B, 0x00, 0x40, 0x00]),
+            bytearray([0x2B, 0x00, 0x80, 0x00]),
             regs=[0, 0, 0, 0, 0, 5, 5],
             fingerprint=fp,
         )
@@ -338,12 +338,12 @@ class TestScanBioL:
         assert org.regs[Organism.R0] == 0
 
     def test_full_threshold_matches_low_similarity(self) -> None:
-        # SCAN_BIO_L R0, 127 → threshold=1.0, sim=0 < 1.0 匹配
+        # SCAN_BIO_L R0, 255 → threshold=1.0, sim=0 < 1.0 匹配
         vm = VirtualMachine()
         fp_a = compute_fingerprint(_genome_a())
         fp_b = compute_fingerprint(_genome_b())
         org = _make_org(
-            bytearray([0x2B, 0x00, 0x7F, 0x00]),
+            bytearray([0x2B, 0x00, 0xFF, 0x00]),
             regs=[0, 0, 0, 0, 0, 5, 5],
             fingerprint=fp_a,
         )
