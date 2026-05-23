@@ -350,12 +350,23 @@ class RightPanel:
         self._create_stats_tab(panel_w, panel_h)
 
         # ── Inspector Tab 内容 ──
+        self._inspector_built: bool = False
         self._inspector_elements: list[pygame_gui.core.UIElement] = []
+        self._placeholder_label: pygame_gui.elements.UILabel | None = None
+        self._meta_labels: list[pygame_gui.elements.UILabel] = []
+        self._reg_label: pygame_gui.elements.UILabel | None = None
+        self._eq_flag_label: pygame_gui.elements.UILabel | None = None
         self._hex_box: pygame_gui.elements.UITextBox | None = None
         self._asm_box: pygame_gui.elements.UITextBox | None = None
         self._copy_btn: pygame_gui.elements.UIButton | None = None
         self._env_image: pygame_gui.elements.UIImage | None = None
         self._copy_btn_genome: bytearray | None = None
+        self._cached_hex_lines: list[str] = []
+        self._cached_asm_lines: list[str] = []
+        self._last_org_id: int | None = None
+        self._last_genome: bytes = b""
+        self._last_pc: int = -1
+        self._pc_update_counter: int = 0
 
         # ── Log Tab 内容 ──
         self._log_box: pygame_gui.elements.UITextBox | None = None
@@ -380,79 +391,78 @@ class RightPanel:
             object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#stats_chart"),
         )
 
-    def _create_inspector_tab(
-        self, panel_w: int, panel_h: int, detail: dict
-    ) -> None:
-        """创建/更新 Inspector Tab 内容。"""
-        # 清除旧的 Inspector 元素
+    def _build_inspector_widgets(self, panel_w: int, panel_h: int) -> None:
+        """一次性创建 Inspector 全部 UI 组件（占位内容），后续用增量更新。"""
+        # 清除旧元素
         for elem in self._inspector_elements:
             elem.kill()
         self._inspector_elements.clear()
+        if self._placeholder_label is not None:
+            self._placeholder_label.kill()
+            self._placeholder_label = None
 
         y = 5
         mx = 5
 
-        regs = detail["regs"]
-        pc = detail["pc"]
-        genome = detail["genome_bytes"]
+        # 占位标签（无生物选中时显示）
+        self._placeholder_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(0, panel_h // 2 - 10, panel_w, 20),
+            text="Click an organism to inspect",
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#placeholder_label"
+            ),
+        )
 
-        # 元数据标签
-        meta_lines = [
-            f"ID: {detail['id']}    Age: {detail['age']}",
-            f"Energy: {detail['energy']}    Len: {len(genome)}B",
-            f"Pos: ({regs[Organism.DP_X]}, {regs[Organism.DP_Y]})    PC: {pc}",
-        ]
-        for line in meta_lines:
+        # ── 元数据标签 × 3 ──
+        self._meta_labels = []
+        for _ in range(3):
             lbl = pygame_gui.elements.UILabel(
                 relative_rect=pygame.Rect(mx, y, panel_w - 10, 18),
-                text=line,
+                text="",
                 manager=self.manager,
                 container=self._content_container,
                 object_id=pygame_gui.core.ObjectID(
                     class_id=None, object_id="#meta_label"
                 ),
             )
+            self._meta_labels.append(lbl)
             self._inspector_elements.append(lbl)
             y += 18
 
         y += 3
 
-        # 寄存器标签
-        reg_parts = [f"{name}={regs[i]}" for i, name in enumerate(REG_NAMES)]
-        reg_text = "Regs: " + "  ".join(reg_parts)
-        lbl = pygame_gui.elements.UILabel(
+        # ── 寄存器标签 ──
+        self._reg_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect(mx, y, panel_w - 10, 18),
-            text=reg_text,
+            text="",
             manager=self.manager,
             container=self._content_container,
             object_id=pygame_gui.core.ObjectID(
                 class_id=None, object_id="#section_label"
             ),
         )
-        self._inspector_elements.append(lbl)
+        self._inspector_elements.append(self._reg_label)
         y += 18
 
-        # Equal flag
-        ef_val = "1" if detail["equal_flag"] else "0"
-        lbl = pygame_gui.elements.UILabel(
+        # ── EQ_Flag 标签 ──
+        self._eq_flag_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect(mx, y, panel_w - 10, 18),
-            text=f"EQ_Flag: {ef_val}",
+            text="",
             manager=self.manager,
             container=self._content_container,
             object_id=pygame_gui.core.ObjectID(
                 class_id=None, object_id="#meta_label"
             ),
         )
-        self._inspector_elements.append(lbl)
+        self._inspector_elements.append(self._eq_flag_label)
         y += 20
 
-        # Hex Dump
-        hex_lines = _genome_hex_dump(genome)
-        hex_html = _hex_to_html(hex_lines, pc)
-        hex_h = 100
+        # ── Hex Dump 文本框 ──
         self._hex_box = pygame_gui.elements.UITextBox(
-            html_text=hex_html,
-            relative_rect=pygame.Rect(mx, y, panel_w - 10, hex_h),
+            html_text="",
+            relative_rect=pygame.Rect(mx, y, panel_w - 10, 100),
             manager=self.manager,
             container=self._content_container,
             object_id=pygame_gui.core.ObjectID(
@@ -460,15 +470,12 @@ class RightPanel:
             ),
         )
         self._inspector_elements.append(self._hex_box)
-        y += hex_h + 5
+        y += 105
 
-        # 反汇编
-        asm_lines = disassemble_with_labels(genome)
-        asm_html = _asm_to_html(asm_lines, pc)
-        asm_h = 100
+        # ── 反汇编文本框 ──
         self._asm_box = pygame_gui.elements.UITextBox(
-            html_text=asm_html,
-            relative_rect=pygame.Rect(mx, y, panel_w - 10, asm_h),
+            html_text="",
+            relative_rect=pygame.Rect(mx, y, panel_w - 10, 100),
             manager=self.manager,
             container=self._content_container,
             object_id=pygame_gui.core.ObjectID(
@@ -476,9 +483,9 @@ class RightPanel:
             ),
         )
         self._inspector_elements.append(self._asm_box)
-        y += asm_h + 5
+        y += 105
 
-        # Copy ASM 按钮
+        # ── Copy ASM 按钮 ──
         self._copy_btn = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect(panel_w - 95, y, 80, 22),
             text="Copy ASM",
@@ -489,19 +496,72 @@ class RightPanel:
             ),
         )
         self._inspector_elements.append(self._copy_btn)
-        self._copy_btn_genome = genome
         y += 28
 
-        # 局部环境 9×9
-        env_surface = _render_env_grid(self.view_api, regs)
-        env_w, env_h = env_surface.get_size()
+        # ── 局部环境 9×9 ──
+        cell_size = min((panel_w - 20) // 9, 20)
+        env_size = 9 * cell_size
+        placeholder_surf = pygame.Surface((env_size, env_size))
+        placeholder_surf.fill(Theme.BG)
         self._env_image = pygame_gui.elements.UIImage(
-            relative_rect=pygame.Rect((panel_w - env_w) // 2, y, env_w, env_h),
-            image_surface=env_surface,
+            relative_rect=pygame.Rect((panel_w - env_size) // 2, y, env_size, env_size),
+            image_surface=placeholder_surf,
             manager=self.manager,
             container=self._content_container,
         )
         self._inspector_elements.append(self._env_image)
+
+        # 重置缓存
+        self._cached_hex_lines = []
+        self._cached_asm_lines = []
+        self._copy_btn_genome = None
+        self._last_genome = b""
+        self._last_pc = -1
+        self._pc_update_counter = 0
+        self._inspector_built = True
+
+    def _update_inspector_detail(self, detail: dict) -> None:
+        """增量更新 Inspector 组件内容，不做 kill+recreate。"""
+        regs = detail["regs"]
+        pc = detail["pc"]
+        genome = detail["genome_bytes"]
+        genome_bytes = bytes(genome)
+        genome_changed = genome_bytes != self._last_genome
+
+        # ── 轻量更新：每帧 ──
+        self._meta_labels[0].set_text(f"ID: {detail['id']}    Age: {detail['age']}")
+        self._meta_labels[1].set_text(f"Energy: {detail['energy']}    Len: {len(genome)}B")
+        self._meta_labels[2].set_text(
+            f"Pos: ({regs[Organism.DP_X]}, {regs[Organism.DP_Y]})    PC: {pc}"
+        )
+
+        reg_parts = [f"{name}={regs[i]}" for i, name in enumerate(REG_NAMES)]
+        self._reg_label.set_text("Regs: " + "  ".join(reg_parts))
+
+        ef_val = "1" if detail["equal_flag"] else "0"
+        self._eq_flag_label.set_text(f"EQ_Flag: {ef_val}")
+
+        env_surface = _render_env_grid(self.view_api, regs)
+        self._env_image.set_image(env_surface)
+
+        # ── 重量更新：genome 变化时立即刷新；PC 变化时节流刷新 ──
+        if genome_changed:
+            self._cached_hex_lines = _genome_hex_dump(genome)
+            self._cached_asm_lines = disassemble_with_labels(genome)
+            self._copy_btn_genome = genome
+            self._hex_box.set_text(_hex_to_html(self._cached_hex_lines, pc))
+            self._asm_box.set_text(_asm_to_html(self._cached_asm_lines, pc))
+            self._last_genome = genome_bytes
+            self._last_pc = pc
+            self._pc_update_counter = 0
+        elif pc != self._last_pc:
+            # PC 变化但 genome 不变：节流，每 10 帧刷新一次高亮
+            self._pc_update_counter += 1
+            if self._pc_update_counter >= 10:
+                self._hex_box.set_text(_hex_to_html(self._cached_hex_lines, pc))
+                self._asm_box.set_text(_asm_to_html(self._cached_asm_lines, pc))
+                self._last_pc = pc
+                self._pc_update_counter = 0
 
     def _create_log_tab(self, panel_w: int, panel_h: int) -> None:
         """创建 Log Tab 内容。"""
@@ -538,9 +598,13 @@ class RightPanel:
         if self._stats_chart is not None:
             self._stats_chart.visible = self.active_tab == 0
 
-        # Inspector 元素
+        # Inspector: 占位标签 vs 详情组件互斥显示
+        is_inspector = self.active_tab == 1
+        has_detail = self._last_org_id is not None
+        if self._placeholder_label is not None:
+            self._placeholder_label.visible = is_inspector and not has_detail
         for elem in self._inspector_elements:
-            elem.visible = self.active_tab == 1
+            elem.visible = is_inspector and has_detail
 
         # Log
         if self._log_box is not None:
@@ -609,70 +673,47 @@ class RightPanel:
             self._refresh_log_text()
 
     def update_inspector(self, selected_org_id: int | None) -> None:
-        """更新 Inspector Tab。"""
-        # 仅在 Inspector Tab 激活 或 选中生物变化时才更新，
-        # 避免非激活 Tab 每帧重建造成严重性能问题。
-        if self.active_tab == 1:
-            if selected_org_id == self._last_org_id:
-                return
-        else:
-            if selected_org_id == self._last_org_id:
-                return
-        self._last_org_id = selected_org_id
+        """更新 Inspector Tab（增量模式）。"""
+        # 非 Inspector Tab 时，仅响应选中生物变化（切换 Tab 时需同步状态）
+        if self.active_tab != 1 and selected_org_id == self._last_org_id:
+            return
 
         panel_rect = self._content_container.rect
         panel_w = panel_rect.width
         panel_h = panel_rect.height
 
+        # 无生物选中
         if selected_org_id is None:
-            # 清除旧元素，显示占位
-            for elem in self._inspector_elements:
-                elem.kill()
-            self._inspector_elements.clear()
-            self._hex_box = None
-            self._asm_box = None
-            self._copy_btn = None
-            self._env_image = None
-
-            lbl = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect(
-                    0, panel_h // 2 - 10, panel_w, 20
-                ),
-                text="Click an organism to inspect",
-                manager=self.manager,
-                container=self._content_container,
-                object_id=pygame_gui.core.ObjectID(
-                    class_id=None, object_id="#placeholder_label"
-                ),
-            )
-            self._inspector_elements.append(lbl)
+            self._last_org_id = None
+            self._last_genome = b""
+            self._last_pc = -1
+            if self._inspector_built:
+                self._placeholder_label.set_text("Click an organism to inspect")
             self._update_tab_visibility()
             return
 
+        # 生物已死亡
         detail = self.view_api.get_organism_detail_safe(selected_org_id)
         if detail is None:
-            for elem in self._inspector_elements:
-                elem.kill()
-            self._inspector_elements.clear()
-            self._hex_box = None
-            self._asm_box = None
-            self._copy_btn = None
-            self._env_image = None
-
-            lbl = pygame_gui.elements.UILabel(
-                relative_rect=pygame.Rect(10, 10, panel_w - 20, 20),
-                text="Organism no longer alive",
-                manager=self.manager,
-                container=self._content_container,
-                object_id=pygame_gui.core.ObjectID(
-                    class_id=None, object_id="#placeholder_label"
-                ),
-            )
-            self._inspector_elements.append(lbl)
+            self._last_org_id = None
+            self._last_genome = b""
+            self._last_pc = -1
+            if self._inspector_built:
+                self._placeholder_label.set_text("Organism no longer alive")
             self._update_tab_visibility()
             return
 
-        self._create_inspector_tab(panel_w, panel_h, detail)
+        # 首次创建组件
+        if not self._inspector_built:
+            self._build_inspector_widgets(panel_w, panel_h)
+
+        # 增量更新内容
+        org_changed = selected_org_id != self._last_org_id
+        self._last_org_id = selected_org_id
+        if org_changed:
+            # 换了生物，强制 genome 视为变化以刷新 Hex/ASM
+            self._last_genome = b""
+        self._update_inspector_detail(detail)
         self._update_tab_visibility()
 
     def add_log_event(self, event_type: str, data: dict) -> None:
@@ -748,6 +789,11 @@ class RightPanel:
             self._log_box.set_dimensions((content_w - 10, max(log_h, 1)))
             self._log_box.set_relative_position((5, 28))
 
-        # Inspector 需要在下次 update_inspector 时重建
-        # 强制刷新
-        self._last_org_id = -1
+        # Inspector 组件需要在下次 update_inspector 时重建
+        for elem in self._inspector_elements:
+            elem.kill()
+        self._inspector_elements.clear()
+        if self._placeholder_label is not None:
+            self._placeholder_label.kill()
+            self._placeholder_label = None
+        self._inspector_built = False
