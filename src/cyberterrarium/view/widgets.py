@@ -292,6 +292,9 @@ class TopBar:
 class RightPanel:
     """右侧面板：Tab 栏 + 3 个 Tab 内容区。"""
 
+    # 日志显示上限：UITextBox 只渲染最近这么多条，避免 HTML 解析过慢
+    _LOG_DISPLAY_LIMIT: int = 50
+
     def __init__(self, manager: pygame_gui.UIManager, view_api: ViewAPI) -> None:
         self.manager = manager
         self.view_api = view_api
@@ -305,6 +308,7 @@ class RightPanel:
         # 日志数据
         self._log_entries: deque[tuple[str, tuple[int, int, int]]] = deque(maxlen=200)
         self._log_filter: str = "all"
+        self._log_dirty: bool = False
 
         # 计算右面板位置
         panel_w = int(INIT_SCREEN_W * RIGHT_PANEL_RATIO)
@@ -549,6 +553,8 @@ class RightPanel:
         if 0 <= tab_idx < len(TAB_NAMES):
             self.active_tab = tab_idx
             self._update_tab_visibility()
+            if tab_idx == 2:
+                self._refresh_log_text()
 
     def handle_button(self, ui_element: pygame_gui.core.UIElement) -> None:
         """处理按钮点击事件。"""
@@ -597,10 +603,21 @@ class RightPanel:
                 self._stats_chart.set_image(chart_surface)
                 self._stats_chart.set_dimensions((chart_w, chart_h))
 
+    def update(self) -> None:
+        """每帧调用：批量刷新脏日志。"""
+        if self._log_dirty and self.active_tab == 2:
+            self._refresh_log_text()
+
     def update_inspector(self, selected_org_id: int | None) -> None:
         """更新 Inspector Tab。"""
-        if self.active_tab != 1 and selected_org_id == self._last_org_id:
-            return
+        # 仅在 Inspector Tab 激活 或 选中生物变化时才更新，
+        # 避免非激活 Tab 每帧重建造成严重性能问题。
+        if self.active_tab == 1:
+            if selected_org_id == self._last_org_id:
+                return
+        else:
+            if selected_org_id == self._last_org_id:
+                return
         self._last_org_id = selected_org_id
 
         panel_rect = self._content_container.rect
@@ -629,6 +646,7 @@ class RightPanel:
                 ),
             )
             self._inspector_elements.append(lbl)
+            self._update_tab_visibility()
             return
 
         detail = self.view_api.get_organism_detail_safe(selected_org_id)
@@ -651,44 +669,43 @@ class RightPanel:
                 ),
             )
             self._inspector_elements.append(lbl)
+            self._update_tab_visibility()
             return
 
         self._create_inspector_tab(panel_w, panel_h, detail)
         self._update_tab_visibility()
 
     def add_log_event(self, event_type: str, data: dict) -> None:
-        """添加日志事件。"""
+        """添加日志事件。仅追加到 deque 并标记脏位，不直接更新文本框。"""
         color = Theme.SUCCESS if event_type == "birth" else Theme.WARNING
         tick = data.get("tick", 0)
         org_id = data.get("org_id", "?")
         ex, ey = data.get("x", "?"), data.get("y", "?")
         text = f"[Tick:{tick}] [{event_type.upper()}] Org #{org_id} at ({ex},{ey})"
         self._log_entries.append((text, color))
-
-        # 直接追加 HTML
-        if self._log_box is not None and self.active_tab == 2:
-            r, g, b = color
-            html_entry = f'<font color="#{r:02X}{g:02X}{b:02X}">{_escape(text)}</font><br>'
-            self._log_box.set_text(self._log_box.html_text + html_entry)
-            # 自动滚到底部
-            if self._log_box.scroll_bar is not None:
-                self._log_box.scroll_bar.set_scroll_from_start_percentage(1.0)
+        self._log_dirty = True
 
     def _refresh_log_text(self) -> None:
-        """重建日志文本框（过滤变化时）。"""
+        """重建日志文本框（过滤变化时）。仅渲染最近 _LOG_DISPLAY_LIMIT 条。"""
         if self._log_box is None:
             return
         parts: list[str] = []
-        for text, color in self._log_entries:
+        # 只取最近 _LOG_DISPLAY_LIMIT 条过滤后的结果
+        for text, color in reversed(self._log_entries):
             if self._log_filter != "all":
                 event_tag = f"[{self._log_filter.upper()}]"
                 if event_tag not in text:
                     continue
             r, g, b = color
             parts.append(f'<font color="#{r:02X}{g:02X}{b:02X}">{_escape(text)}</font><br>')
+            if len(parts) >= self._LOG_DISPLAY_LIMIT:
+                break
+        # parts 是倒序收集的，需要反转为时间正序
+        parts.reverse()
         self._log_box.set_text("".join(parts))
         if self._log_box.scroll_bar is not None:
             self._log_box.scroll_bar.set_scroll_from_start_percentage(1.0)
+        self._log_dirty = False
 
     def rebuild_layout(self, win_w: int, win_h: int) -> None:
         """窗口缩放时重建右侧面板布局。"""

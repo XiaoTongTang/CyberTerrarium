@@ -42,8 +42,6 @@ class CyberTerrariumUI:
         # HUD闪烁
         self._phase_flash_until: int = 0
         self._last_phase_text: str = ""
-        # 视口 Surface
-        self._viewport_image: pygame_gui.elements.UIImage | None = None
         # 事件监听
         self.control_api.ctrl.add_event_listener(self._on_sim_event)
 
@@ -60,24 +58,6 @@ class CyberTerrariumUI:
 
         # 创建顶栏
         self.top_bar = TopBar(self.manager)
-
-        # 创建视口 UIImage
-        viewport_rect = self._calc_viewport_rect(INIT_SCREEN_W, INIT_SCREEN_H)
-        placeholder = pygame.Surface(
-            (max(viewport_rect.width, 1), max(viewport_rect.height, 1))
-        )
-        placeholder.fill(Theme.BG)
-        self._viewport_image = pygame_gui.elements.UIImage(
-            relative_rect=viewport_rect,
-            image_surface=placeholder,
-            manager=self.manager,
-            anchors={
-                "left": "left",
-                "right": "left",
-                "top": "top",
-                "bottom": "top",
-            },
-        )
 
         # 创建右侧面板
         self.right_panel = RightPanel(self.manager, self.view_api)
@@ -283,14 +263,17 @@ class CyberTerrariumUI:
         # 更新 Inspector
         self.right_panel.update_inspector(self.selected_org_id)
 
+        # 批量刷新脏日志
+        self.right_panel.update()
+
     # ── 渲染 ──
 
     def _render_frame(self) -> None:
+        self.screen.fill(Theme.BG)
         self._render_viewport()
         self._render_viewport_hud()
 
     def _render_viewport(self) -> None:
-        assert self._viewport_image is not None
         # 同步视图模式
         if self.top_bar is not None:
             self.renderer.mode = self.top_bar.view_mode
@@ -306,16 +289,13 @@ class CyberTerrariumUI:
             small_surface, (max(scaled_w, 1), max(scaled_h, 1))
         )
 
-        # 计算当前视口面板的实际像素尺寸
+        # 贴图到视口区域（用裁剪防止溢出到右面板/顶栏）
         vr = self._calc_viewport_rect(*self.screen.get_size())
-        viewport_surface = pygame.Surface((vr.width, vr.height))
-        viewport_surface.fill(Theme.BG)
-        viewport_surface.blit(
-            big_surface, (-int(self.camera.cam_x), -int(self.camera.cam_y))
+        self.screen.set_clip(vr)
+        self.screen.blit(
+            big_surface, (vr.x - int(self.camera.cam_x), vr.y - int(self.camera.cam_y))
         )
-
-        # 更新 UIImage
-        self._viewport_image.set_image(viewport_surface)
+        self.screen.set_clip(None)
 
     def _render_viewport_hud(self) -> None:
         """在视口上绘制 HUD 叠层（图例、选中框等）。"""
@@ -338,13 +318,8 @@ class CyberTerrariumUI:
         assert self.manager is not None
         assert self.top_bar is not None
         assert self.right_panel is not None
-        assert self._viewport_image is not None
 
-        # 更新视口区域
-        vr = self._calc_viewport_rect(win_w, win_h)
-        self._viewport_image.set_dimensions(vr.size)
-
-        # 更新右侧面板
+        # 更新右侧面板（视口无需特殊处理，每帧自动计算 rect）
         self.right_panel.rebuild_layout(win_w, win_h)
 
     # ── 事件回调 ──
