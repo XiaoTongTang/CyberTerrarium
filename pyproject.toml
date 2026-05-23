@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pygame-ce>=2.5",
+    "pygame-gui>=0.6",
     "numpy>=1.26",
     "numba>=0.60",
 ]
@@ -34,7 +35,7 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pygame_ce.*", "numba.*"]
+module = ["pygame_ce.*", "numba.*", "pygame_gui.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

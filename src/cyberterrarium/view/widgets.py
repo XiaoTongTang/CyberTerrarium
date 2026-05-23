@@ -1,24 +1,33 @@
-"""UI组件 - 顶栏、右侧面板（统计/检查/日志）"""
+"""UI组件 - pygame_gui 版顶栏、右侧面板（统计/检查/日志）"""
 
 from __future__ import annotations
 
+import html as html_mod
 from collections import deque
 
 import numpy as np
 import pygame
+import pygame_gui
 
 from cyberterrarium.facade.api import ViewAPI
 from cyberterrarium.model.isa import REG_NAMES
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.tools.disassembler import disassemble_with_labels
 from cyberterrarium.view.layout import (
-    RIGHT_PANEL,
-    SCREEN_W,
+    INIT_SCREEN_H,
+    INIT_SCREEN_W,
+    RIGHT_PANEL_RATIO,
     TAB_BAR_H,
     TAB_NAMES,
+    TOP_BAR_H,
     Theme,
 )
 from cyberterrarium.view.renderer import MATERIAL_LUT
+
+
+def _escape(text: str) -> str:
+    """HTML 转义。"""
+    return html_mod.escape(text)
 
 
 def _genome_hex_dump(genome: bytearray | bytes) -> list[str]:
@@ -36,99 +45,230 @@ def _genome_hex_dump(genome: bytearray | bytes) -> list[str]:
     return lines
 
 
-def _render_text_box(
-    surface: pygame.Surface,
-    x: int,
-    y: int,
-    w: int,
-    box_h: int,
-    title: str,
-    lines: list[str],
-    font: pygame.font.Font,
-    pc: int,
-    highlight_col_width: int = 0,
-) -> int:
-    """渲染一个带标题和边框的文本框，返回 box 底部 y 坐标。"""
-    # 标题
-    title_h = 18
-    surface.blit(font.render(title, True, Theme.HIGHLIGHT), (x + 10, y + 2))
-    # 边框区域
-    content_y = y + title_h
-    content_h = box_h - title_h
-    pygame.draw.rect(surface, (25, 25, 30), (x + 5, content_y, w - 10, content_h))
-    pygame.draw.rect(surface, Theme.BORDER, (x + 5, content_y, w - 10, content_h), 1)
-    # 文本内容
-    line_h = 15
-    max_lines = content_h // line_h
-    clip = pygame.Rect(x + 6, content_y + 1, w - 12, content_h - 2)
-    surface.set_clip(clip)
-    ty = content_y + 2
-    for i, line_text in enumerate(lines):
-        if i >= max_lines:
-            break
-        # PC 高亮行
-        if highlight_col_width > 0:
-            inst_offset = i * highlight_col_width
-            is_pc_line = inst_offset <= pc < inst_offset + highlight_col_width
+def _hex_to_html(hex_lines: list[str], pc: int) -> str:
+    """将十六进制转储行转为 HTML，PC 行高亮。"""
+    parts: list[str] = []
+    for i, line in enumerate(hex_lines):
+        inst_offset = i * 4
+        if inst_offset <= pc < inst_offset + 4:
+            parts.append(f'<font color="#569CD6"><b>{_escape(line)}</b></font><br>')
         else:
-            inst_offset = i * 4
-            is_pc_line = inst_offset <= pc < inst_offset + 4
-        if is_pc_line:
-            pygame.draw.rect(surface, (40, 60, 90), (x + 5, ty, w - 10, line_h))
-        txt = font.render(line_text, True, Theme.TEXT)
-        surface.blit(txt, (x + 12, ty))
-        ty += line_h
-    surface.set_clip(None)
-    return y + box_h
+            parts.append(f"{_escape(line)}<br>")
+    return "".join(parts)
+
+
+def _asm_to_html(asm_lines: list[str], pc: int) -> str:
+    """将汇编行转为 HTML，PC 行高亮。"""
+    parts: list[str] = []
+    for i, line in enumerate(asm_lines):
+        inst_offset = i * 4
+        if inst_offset <= pc < inst_offset + 4:
+            parts.append(f'<font color="#569CD6"><b>{_escape(line)}</b></font><br>')
+        else:
+            parts.append(f"{_escape(line)}<br>")
+    return "".join(parts)
+
+
+def _render_env_grid(
+    view_api: ViewAPI, regs: list[int], cell_size: int = 20
+) -> pygame.Surface:
+    """渲染 9x9 局部环境网格到 Surface。"""
+    grid = view_api.get_chemical_grid_ref()
+    gy = regs[Organism.DP_Y]
+    gx = regs[Organism.DP_X]
+    grid_h, grid_w = grid.shape
+    size = 9 * cell_size
+    surface = pygame.Surface((size, size))
+    surface.fill(Theme.BG)
+    for dy in range(-4, 5):
+        for dx in range(-4, 5):
+            wy = (gy + dy) % grid_h
+            wx = (gx + dx) % grid_w
+            mat_id = int(np.clip(grid[wy, wx], 0, 4))
+            color = tuple(MATERIAL_LUT[mat_id])
+            erx = (dx + 4) * cell_size
+            ery = (dy + 4) * cell_size
+            pygame.draw.rect(surface, color, (erx, ery, cell_size - 1, cell_size - 1))
+    # 中心标记
+    cx = 4 * cell_size
+    cy = 4 * cell_size
+    pygame.draw.rect(surface, Theme.HIGHLIGHT, (cx, cy, cell_size - 1, cell_size - 1), 2)
+    return surface
+
+
+def _render_stats_chart(
+    population_history: deque[int],
+    energy_history: deque[float],
+    w: int,
+    h: int,
+) -> pygame.Surface:
+    """渲染统计折线图到 Surface。"""
+    surface = pygame.Surface((w, h))
+    surface.fill((20, 20, 25))
+
+    # 图例
+    font = pygame.font.SysFont("consolas,couriernew,monospace", 14)
+    pygame.draw.rect(surface, Theme.TEXT, (10, 7, 10, 10))
+    surface.blit(font.render("Population", True, Theme.TEXT), (24, 5))
+    pygame.draw.rect(surface, (200, 200, 60), (120, 7, 10, 10))
+    surface.blit(font.render("Avg Energy", True, (200, 200, 60)), (134, 5))
+
+    # 绘图区
+    chart_x = 10
+    chart_y = 30
+    chart_w = w - 20
+    chart_h = h - 40
+    pygame.draw.rect(surface, (20, 20, 25), (chart_x, chart_y, chart_w, chart_h))
+
+    _draw_line(surface, population_history, chart_x, chart_y, chart_w, chart_h, Theme.TEXT)
+    _draw_line(
+        surface, energy_history, chart_x, chart_y, chart_w, chart_h, (200, 200, 60)
+    )
+    return surface
+
+
+def _draw_line(
+    surface: pygame.Surface,
+    data: deque,
+    cx: int,
+    cy: int,
+    cw: int,
+    ch: int,
+    color: tuple[int, int, int],
+) -> None:
+    """在指定区域绘制折线。"""
+    if len(data) < 2:
+        return
+    max_val = max(max(data), 1)
+    points = []
+    n = len(data)
+    for i, val in enumerate(data):
+        px = cx + int(i * cw / max(n - 1, 1))
+        py = cy + ch - int(val / max_val * ch * 0.9)
+        points.append((px, py))
+    if len(points) >= 2:
+        pygame.draw.lines(surface, color, False, points, 1)
 
 
 class TopBar:
-    """顶部工具栏：状态指示、控制按键、速度滑块、视图切换、系统信息。"""
+    """顶部工具栏：状态指示、控制按键标签、速度滑块、视图切换、系统信息。"""
 
-    def __init__(self) -> None:
-        self.font: pygame.font.Font | None = None
-        self.font_sm: pygame.font.Font | None = None
+    def __init__(self, manager: pygame_gui.UIManager) -> None:
+        self.manager = manager
         self.ticks_per_frame: int = 1
         self.view_mode: str = "material"  # "material" | "energy"
-        self._slider_dragging: bool = False
 
-    def init_fonts(self, font_sm: pygame.font.Font, font_md: pygame.font.Font) -> None:
-        self.font = font_md
-        self.font_sm = font_sm
+        # 顶栏面板
+        self.panel = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect(0, 0, INIT_SCREEN_W, TOP_BAR_H),
+            manager=manager,
+            anchors={"left": "left", "right": "right", "top": "top", "bottom": "top"},
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#top_bar_panel"),
+        )
 
-    def handle_click(self, mx: int, my: int, screen_w: int) -> None:
-        """处理顶栏区域的鼠标点击。返回是否消费了事件。"""
-        _, _, _, bar_h = (0, 0, SCREEN_W, 40)
-        if my > bar_h:
-            return
-        # 速度滑块区域 (大致在 x=600~750)
-        slider_x0 = 600
-        slider_x1 = 750
-        if slider_x0 <= mx <= slider_x1:
-            ratio = (mx - slider_x0) / (slider_x1 - slider_x0)
-            self.ticks_per_frame = max(1, min(50, int(ratio * 50) + 1))
-            self._slider_dragging = True
-        # 视图模式切换 (大致在 x=800~950)
-        mode_x0 = 800
-        btn_w = 70
-        if mode_x0 <= mx <= mode_x0 + btn_w:
+        # 状态指示标签
+        self._status_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(10, 10, 110, 20),
+            text="● Running",
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#status_label"),
+        )
+
+        # 控制按键标签
+        self._key_labels: list[pygame_gui.elements.UILabel] = []
+        key_texts = [
+            "[Space] Play/Pause",
+            "[F1] Physics",
+            "[F2] Life",
+            "[F3] Repro+Settle",
+            "[F5] FullTick",
+        ]
+        kx = 130
+        for text in key_texts:
+            lbl = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(kx, 12, -1, 16),
+                text=text,
+                manager=manager,
+                container=self.panel,
+                object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#key_label"),
+            )
+            self._key_labels.append(lbl)
+            kx += lbl.rect.width + 10
+
+        # 速度标签
+        self._speed_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(580, 12, -1, 16),
+            text="Speed:",
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#key_label"),
+        )
+
+        # 速度滑块
+        self._speed_slider = pygame_gui.elements.UIHorizontalSlider(
+            relative_rect=pygame.Rect(630, 14, 150, 14),
+            start_value=1,
+            value_range=(1, 50),
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#speed_slider"),
+        )
+
+        # 速度值标签
+        self._speed_val_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(785, 12, -1, 16),
+            text="1 T/F",
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#key_label"),
+        )
+
+        # 视图模式按钮
+        self._material_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(850, 8, 70, 22),
+            text="Material",
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#view_mode_button"
+            ),
+        )
+        self._energy_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(925, 8, 70, 22),
+            text="Energy",
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#view_mode_button"
+            ),
+        )
+
+        # 系统信息标签（右对齐）
+        self._sysinfo_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(-300, 12, 280, 16),
+            text="FPS: 0  Tick: 0  Pop: 0/0",
+            manager=manager,
+            container=self.panel,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#sysinfo_label"),
+            anchors={"right": "right", "left": "right", "top": "top", "bottom": "top"},
+        )
+
+    def handle_button(self, ui_element: pygame_gui.core.UIElement) -> None:
+        """处理按钮点击事件。"""
+        if ui_element == self._material_btn:
             self.view_mode = "material"
-        elif mode_x0 + btn_w + 5 <= mx <= mode_x0 + 2 * btn_w + 5:
+        elif ui_element == self._energy_btn:
             self.view_mode = "energy"
 
-    def handle_drag(self, mx: int) -> None:
-        if self._slider_dragging:
-            slider_x0 = 600
-            slider_x1 = 750
-            ratio = max(0.0, min(1.0, (mx - slider_x0) / (slider_x1 - slider_x0)))
-            self.ticks_per_frame = max(1, min(50, int(ratio * 50) + 1))
+    def handle_slider(self, ui_element: pygame_gui.core.UIElement, value: float) -> None:
+        """处理滑块值变化事件。"""
+        if ui_element == self._speed_slider:
+            self.ticks_per_frame = max(1, int(value))
+            self._speed_val_label.set_text(f"{self.ticks_per_frame} T/F")
 
-    def handle_release(self) -> None:
-        self._slider_dragging = False
-
-    def render(
+    def update_info(
         self,
-        surface: pygame.Surface,
         mode: str,
         is_paused: bool,
         fps: float,
@@ -136,426 +276,461 @@ class TopBar:
         alive: int,
         cap: int,
     ) -> None:
-        assert self.font is not None and self.font_sm is not None
-        # 背景
-        pygame.draw.rect(surface, Theme.PANEL, (0, 0, SCREEN_W, 40))
-        pygame.draw.line(surface, Theme.BORDER, (0, 39), (SCREEN_W, 39))
-
-        x = 10
-        # 状态指示灯
+        """更新顶栏显示信息。"""
+        # 状态指示
         if mode == "CONTINUOUS" and not is_paused:
-            color = Theme.SUCCESS
-            label = "Running"
+            self._status_label.set_text("● Running")
         elif mode == "DEBUG":
-            color = Theme.HIGHLIGHT
-            label = "Debug"
+            self._status_label.set_text("● Debug")
         else:
-            color = (200, 200, 60)
-            label = "Paused"
-        pygame.draw.circle(surface, color, (x + 6, 20), 6)
-        txt = self.font.render(label, True, Theme.TEXT)
-        surface.blit(txt, (x + 16, 11))
-        x += 16 + txt.get_width() + 15
+            self._status_label.set_text("● Paused")
 
-        # 控制按键标签
-        debug_active = mode == "DEBUG"
-        keys_info = [
-            ("[Space] Play/Pause", True),
-            ("[F1] Physics", debug_active),
-            ("[F2] Life", debug_active),
-            ("[F3] Repro+Settle", debug_active),
-            ("[F5] FullTick", debug_active),
-        ]
-        for text, active in keys_info:
-            c = Theme.TEXT if active else Theme.GREYED
-            txt = self.font_sm.render(text, True, c)
-            surface.blit(txt, (x, 13))
-            x += txt.get_width() + 10
-
-        # 速度滑块
-        x = 600
-        txt = self.font_sm.render("Speed:", True, Theme.TEXT)
-        surface.blit(txt, (x, 13))
-        x += txt.get_width() + 5
-        slider_w = 150
-        pygame.draw.rect(surface, Theme.BORDER, (x, 16, slider_w, 8))
-        ratio = (self.ticks_per_frame - 1) / 49.0
-        knob_x = x + int(ratio * slider_w)
-        pygame.draw.circle(surface, Theme.HIGHLIGHT, (knob_x, 20), 6)
-        x += slider_w + 5
-        val_txt = self.font_sm.render(f"{self.ticks_per_frame} T/F", True, Theme.TEXT)
-        surface.blit(val_txt, (x, 13))
-
-        # 视图模式切换
-        x = 800
-        for mode_name in ["Material", "Energy"]:
-            is_active = self.view_mode == mode_name.lower()
-            c = Theme.HIGHLIGHT if is_active else Theme.GREYED
-            btn_w = 70
-            pygame.draw.rect(surface, c, (x, 10, btn_w, 20), 2 if not is_active else 0)
-            txt = self.font_sm.render(mode_name, True, Theme.TEXT if is_active else Theme.GREYED)
-            surface.blit(txt, (x + (btn_w - txt.get_width()) // 2, 13))
-            x += btn_w + 5
-
-        # 右侧系统信息
-        info = f"FPS: {fps:.0f}  Tick: {tick}  Pop: {alive}/{cap}"
-        txt = self.font_sm.render(info, True, Theme.TEXT)
-        surface.blit(txt, (SCREEN_W - txt.get_width() - 10, 13))
+        # 系统信息
+        self._sysinfo_label.set_text(f"FPS: {fps:.0f}  Tick: {tick}  Pop: {alive}/{cap}")
 
 
-class StatsTab:
-    """统计折线图Tab。"""
+class RightPanel:
+    """右侧面板：Tab 栏 + 3 个 Tab 内容区。"""
 
-    def __init__(self) -> None:
-        self.population_history: deque[int] = deque(maxlen=1000)
-        self.energy_history: deque[float] = deque(maxlen=1000)
-        self.font: pygame.font.Font | None = None
-
-    def init_fonts(self, font_sm: pygame.font.Font) -> None:
-        self.font = font_sm
-
-    def update(self, alive: int, avg_energy: float) -> None:
-        self.population_history.append(alive)
-        self.energy_history.append(avg_energy)
-
-    def render(self, surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
-        assert self.font is not None
-        x, y, w, h = rect
-        pygame.draw.rect(surface, Theme.PANEL, rect)
-        # 图例
-        lx = x + 10
-        ly = y + 5
-        pygame.draw.rect(surface, Theme.TEXT, (lx, ly + 2, 10, 10))
-        surface.blit(self.font.render("Population", True, Theme.TEXT), (lx + 14, ly))
-        lx += 110
-        pygame.draw.rect(surface, (200, 200, 60), (lx, ly + 2, 10, 10))
-        surface.blit(self.font.render("Avg Energy", True, (200, 200, 60)), (lx + 14, ly))
-
-        # 绘图区
-        chart_x = x + 10
-        chart_y = y + 30
-        chart_w = w - 20
-        chart_h = h - 40
-        pygame.draw.rect(surface, (20, 20, 25), (chart_x, chart_y, chart_w, chart_h))
-
-        self._draw_line(
-            surface, self.population_history,
-            chart_x, chart_y, chart_w, chart_h, Theme.TEXT,
-        )
-        self._draw_line(
-            surface, self.energy_history,
-            chart_x, chart_y, chart_w, chart_h, (200, 200, 60),
-        )
-
-    def _draw_line(
-        self,
-        surface: pygame.Surface,
-        data: deque,
-        cx: int, cy: int, cw: int, ch: int,
-        color: tuple[int, int, int],
-    ) -> None:
-        if len(data) < 2:
-            return
-        max_val = max(max(data), 1)
-        points = []
-        n = len(data)
-        for i, val in enumerate(data):
-            px = cx + int(i * cw / max(n - 1, 1))
-            py = cy + ch - int(val / max_val * ch * 0.9)
-            points.append((px, py))
-        if len(points) >= 2:
-            pygame.draw.lines(surface, color, False, points, 1)
-
-
-class InspectorTab:
-    """生物检查器Tab：元数据、寄存器、十六进制/反汇编文本框、局部环境。"""
-
-    def __init__(self, view_api: ViewAPI) -> None:
+    def __init__(self, manager: pygame_gui.UIManager, view_api: ViewAPI) -> None:
+        self.manager = manager
         self.view_api = view_api
-        self.font: pygame.font.Font | None = None
-        self.font_sm: pygame.font.Font | None = None
-        self.scroll_offset: int = 0
-        self._copy_btn_rect: tuple[int, int, int, int] | None = None
-        self._copy_btn_text: str = ""
-        self._copy_btn_timer: int = 0
+        self.active_tab: int = 0
+        self._last_org_id: int | None = None
 
-    def init_fonts(self, font_sm: pygame.font.Font, font_md: pygame.font.Font) -> None:
-        self.font = font_md
-        self.font_sm = font_sm
+        # 统计数据
+        self._population_history: deque[int] = deque(maxlen=1000)
+        self._energy_history: deque[float] = deque(maxlen=1000)
 
-    def render(
-        self,
-        surface: pygame.Surface,
-        rect: tuple[int, int, int, int],
-        selected_org_id: int | None,
+        # 日志数据
+        self._log_entries: deque[tuple[str, tuple[int, int, int]]] = deque(maxlen=200)
+        self._log_filter: str = "all"
+
+        # 计算右面板位置
+        panel_w = int(INIT_SCREEN_W * RIGHT_PANEL_RATIO)
+        panel_h = INIT_SCREEN_H - TOP_BAR_H
+        panel_rect = pygame.Rect(INIT_SCREEN_W - panel_w, TOP_BAR_H, panel_w, panel_h)
+
+        # 面板容器
+        self._panel = pygame_gui.elements.UIPanel(
+            relative_rect=panel_rect,
+            manager=manager,
+            anchors={"left": "left", "right": "right", "top": "top", "bottom": "bottom"},
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#right_panel"),
+        )
+
+        # Tab 栏按钮
+        self._tab_buttons: list[pygame_gui.elements.UIButton] = []
+        tab_w = panel_w // len(TAB_NAMES)
+        for i, name in enumerate(TAB_NAMES):
+            btn = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(i * tab_w, 0, tab_w, TAB_BAR_H),
+                text=name,
+                manager=manager,
+                container=self._panel,
+                object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#tab_button"),
+            )
+            self._tab_buttons.append(btn)
+
+        # 内容容器（Tab 栏下方）
+        content_rect = pygame.Rect(0, TAB_BAR_H, panel_w, panel_h - TAB_BAR_H)
+        self._content_container = pygame_gui.elements.UIPanel(
+            relative_rect=content_rect,
+            manager=manager,
+            container=self._panel,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#right_panel"),
+        )
+
+        # ── Stats Tab 内容 ──
+        self._stats_chart: pygame_gui.elements.UIImage | None = None
+        self._create_stats_tab(panel_w, panel_h)
+
+        # ── Inspector Tab 内容 ──
+        self._inspector_elements: list[pygame_gui.core.UIElement] = []
+        self._hex_box: pygame_gui.elements.UITextBox | None = None
+        self._asm_box: pygame_gui.elements.UITextBox | None = None
+        self._copy_btn: pygame_gui.elements.UIButton | None = None
+        self._env_image: pygame_gui.elements.UIImage | None = None
+        self._copy_btn_genome: bytearray | None = None
+
+        # ── Log Tab 内容 ──
+        self._log_box: pygame_gui.elements.UITextBox | None = None
+        self._filter_buttons: list[pygame_gui.elements.UIButton] = []
+        self._create_log_tab(panel_w, panel_h)
+
+        # 初始显示
+        self._update_tab_visibility()
+
+    def _create_stats_tab(self, panel_w: int, panel_h: int) -> None:
+        """创建 Stats Tab 内容。"""
+        chart_w = panel_w - 20
+        chart_h = panel_h - TAB_BAR_H - 20
+        chart_surface = _render_stats_chart(
+            self._population_history, self._energy_history, max(chart_w, 1), max(chart_h, 1)
+        )
+        self._stats_chart = pygame_gui.elements.UIImage(
+            relative_rect=pygame.Rect(10, 10, chart_w, chart_h),
+            image_surface=chart_surface,
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#stats_chart"),
+        )
+
+    def _create_inspector_tab(
+        self, panel_w: int, panel_h: int, detail: dict
     ) -> None:
-        assert self.font is not None and self.font_sm is not None
-        x, y, w, h = rect
-        pygame.draw.rect(surface, Theme.PANEL, rect)
+        """创建/更新 Inspector Tab 内容。"""
+        # 清除旧的 Inspector 元素
+        for elem in self._inspector_elements:
+            elem.kill()
+        self._inspector_elements.clear()
 
-        if selected_org_id is None:
-            txt = self.font.render("Click an organism to inspect", True, Theme.GREYED)
-            surface.blit(txt, (x + (w - txt.get_width()) // 2, y + h // 2))
-            return
-
-        detail = self.view_api.get_organism_detail_safe(selected_org_id)
-        if detail is None:
-            txt = self.font.render("Organism no longer alive", True, Theme.WARNING)
-            surface.blit(txt, (x + 10, y + 10))
-            return
+        y = 5
+        mx = 5
 
         regs = detail["regs"]
         pc = detail["pc"]
         genome = detail["genome_bytes"]
 
-        # ── 元数据区 ──
-        my = y + 8
-        mx = x + 10
-        col_w = w // 2 - 10
-        meta = [
-            (f"ID: {detail['id']}", f"Age: {detail['age']}"),
-            (f"Energy: {detail['energy']}", f"Len: {len(genome)}B"),
-            (
-                f"Pos: ({regs[Organism.DP_X]}, {regs[Organism.DP_Y]})",
-                f"PC: {pc}",
-            ),
+        # 元数据标签
+        meta_lines = [
+            f"ID: {detail['id']}    Age: {detail['age']}",
+            f"Energy: {detail['energy']}    Len: {len(genome)}B",
+            f"Pos: ({regs[Organism.DP_X]}, {regs[Organism.DP_Y]})    PC: {pc}",
         ]
-        for left, right in meta:
-            surface.blit(self.font_sm.render(left, True, Theme.TEXT), (mx, my))
-            surface.blit(self.font_sm.render(right, True, Theme.TEXT), (mx + col_w, my))
-            my += 18
-        my += 3
-        pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
-        my += 5
+        for line in meta_lines:
+            lbl = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(mx, y, panel_w - 10, 18),
+                text=line,
+                manager=self.manager,
+                container=self._content_container,
+                object_id=pygame_gui.core.ObjectID(
+                    class_id=None, object_id="#meta_label"
+                ),
+            )
+            self._inspector_elements.append(lbl)
+            y += 18
 
-        # ── 寄存器区 ──
-        label = "Regs: "
-        surface.blit(self.font_sm.render(label, True, Theme.HIGHLIGHT), (mx, my))
-        rx = mx + self.font_sm.size(label)[0]
-        for i, name in enumerate(REG_NAMES):
-            val = regs[i]
-            txt = f"{name}={val}"
-            surface.blit(self.font_sm.render(txt, True, Theme.TEXT), (rx, my))
-            rx += self.font_sm.size(txt)[0] + 8
-        my += 18
+        y += 3
+
+        # 寄存器标签
+        reg_parts = [f"{name}={regs[i]}" for i, name in enumerate(REG_NAMES)]
+        reg_text = "Regs: " + "  ".join(reg_parts)
+        lbl = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(mx, y, panel_w - 10, 18),
+            text=reg_text,
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#section_label"
+            ),
+        )
+        self._inspector_elements.append(lbl)
+        y += 18
+
         # Equal flag
         ef_val = "1" if detail["equal_flag"] else "0"
-        surface.blit(
-            self.font_sm.render(f"EQ_Flag: {ef_val}", True, Theme.TEXT), (mx, my)
+        lbl = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect(mx, y, panel_w - 10, 18),
+            text=f"EQ_Flag: {ef_val}",
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#meta_label"
+            ),
         )
-        my += 20
-        pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
-        my += 5
+        self._inspector_elements.append(lbl)
+        y += 20
 
-        # ── 十六进制文本框 ──
+        # Hex Dump
         hex_lines = _genome_hex_dump(genome)
+        hex_html = _hex_to_html(hex_lines, pc)
+        hex_h = 100
+        self._hex_box = pygame_gui.elements.UITextBox(
+            html_text=hex_html,
+            relative_rect=pygame.Rect(mx, y, panel_w - 10, hex_h),
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#hex_textbox"
+            ),
+        )
+        self._inspector_elements.append(self._hex_box)
+        y += hex_h + 5
+
+        # 反汇编
         asm_lines = disassemble_with_labels(genome)
-        box_h = 100
-        my = _render_text_box(
-            surface, x, my, w, box_h, "Hex Dump", hex_lines,
-            self.font_sm, pc, highlight_col_width=4,
+        asm_html = _asm_to_html(asm_lines, pc)
+        asm_h = 100
+        self._asm_box = pygame_gui.elements.UITextBox(
+            html_text=asm_html,
+            relative_rect=pygame.Rect(mx, y, panel_w - 10, asm_h),
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#asm_textbox"
+            ),
         )
+        self._inspector_elements.append(self._asm_box)
+        y += asm_h + 5
 
-        # ── 反汇编文本框 ──
-        my = _render_text_box(
-            surface, x, my, w, box_h, "Disassembly", asm_lines,
-            self.font_sm, pc,
+        # Copy ASM 按钮
+        self._copy_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(panel_w - 95, y, 80, 22),
+            text="Copy ASM",
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#copy_button"
+            ),
         )
-
-        # ── 拷贝汇编按钮 ──
-        btn_label = self._copy_btn_text or "Copy ASM"
-        btn_w = self.font_sm.size(btn_label)[0] + 16
-        btn_h = 22
-        btn_x = x + w - btn_w - 8
-        btn_y = my + 3
-        btn_color = Theme.SUCCESS if self._copy_btn_text else Theme.HIGHLIGHT
-        pygame.draw.rect(surface, btn_color, (btn_x, btn_y, btn_w, btn_h), border_radius=3)
-        btn_txt = self.font_sm.render(btn_label, True, (0, 0, 0))
-        surface.blit(btn_txt, (btn_x + (btn_w - btn_txt.get_width()) // 2,
-                                btn_y + (btn_h - btn_txt.get_height()) // 2))
-        self._copy_btn_rect = (btn_x, btn_y, btn_w, btn_h)
+        self._inspector_elements.append(self._copy_btn)
         self._copy_btn_genome = genome
+        y += 28
 
-        # ── 局部环境 9x9 ──
-        pygame.draw.line(surface, Theme.BORDER, (x + 5, my), (x + w - 5, my))
-        my += 3
-        grid = self.view_api.get_chemical_grid_ref()
-        gy = regs[Organism.DP_Y]
-        gx = regs[Organism.DP_X]
-        grid_h, grid_w = grid.shape
-        cell_size = min((w - 20) // 9, 22)
-        env_x0 = x + (w - 9 * cell_size) // 2
-        for dy in range(-4, 5):
-            for dx in range(-4, 5):
-                wy = (gy + dy) % grid_h
-                wx = (gx + dx) % grid_w
-                mat_id = int(np.clip(grid[wy, wx], 0, 4))
-                color = tuple(MATERIAL_LUT[mat_id])
-                erx = env_x0 + (dx + 4) * cell_size
-                ery = my + (dy + 4) * cell_size
-                pygame.draw.rect(surface, color, (erx, ery, cell_size - 1, cell_size - 1))
-        # 中心标记
-        cx = env_x0 + 4 * cell_size
-        cy = my + 4 * cell_size
-        pygame.draw.rect(surface, Theme.HIGHLIGHT, (cx, cy, cell_size - 1, cell_size - 1), 2)
+        # 局部环境 9×9
+        env_surface = _render_env_grid(self.view_api, regs)
+        env_w, env_h = env_surface.get_size()
+        self._env_image = pygame_gui.elements.UIImage(
+            relative_rect=pygame.Rect((panel_w - env_w) // 2, y, env_w, env_h),
+            image_surface=env_surface,
+            manager=self.manager,
+            container=self._content_container,
+        )
+        self._inspector_elements.append(self._env_image)
 
-    def handle_click(self, mx: int, my: int) -> None:
-        if self._copy_btn_rect is None:
-            return
-        bx, by, bw, bh = self._copy_btn_rect
-        if bx <= mx <= bx + bw and by <= my <= by + bh:
+    def _create_log_tab(self, panel_w: int, panel_h: int) -> None:
+        """创建 Log Tab 内容。"""
+        # 过滤按钮
+        fx = 5
+        for name in ["All", "Birth", "Death"]:
+            btn = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(fx, 5, 50, 18),
+                text=name,
+                manager=self.manager,
+                container=self._content_container,
+                object_id=pygame_gui.core.ObjectID(
+                    class_id=None, object_id="#filter_button"
+                ),
+            )
+            self._filter_buttons.append(btn)
+            fx += 55
+
+        # 日志文本框
+        log_h = panel_h - TAB_BAR_H - 30
+        self._log_box = pygame_gui.elements.UITextBox(
+            html_text="",
+            relative_rect=pygame.Rect(5, 28, panel_w - 10, max(log_h, 1)),
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#log_textbox"
+            ),
+        )
+
+    def _update_tab_visibility(self) -> None:
+        """根据当前 Tab 显示/隐藏内容。"""
+        # Stats
+        if self._stats_chart is not None:
+            self._stats_chart.visible = self.active_tab == 0
+
+        # Inspector 元素
+        for elem in self._inspector_elements:
+            elem.visible = self.active_tab == 1
+
+        # Log
+        if self._log_box is not None:
+            self._log_box.visible = self.active_tab == 2
+        for btn in self._filter_buttons:
+            btn.visible = self.active_tab == 2
+
+    def set_active_tab(self, tab_idx: int) -> None:
+        """切换活动 Tab。"""
+        if 0 <= tab_idx < len(TAB_NAMES):
+            self.active_tab = tab_idx
+            self._update_tab_visibility()
+
+    def handle_button(self, ui_element: pygame_gui.core.UIElement) -> None:
+        """处理按钮点击事件。"""
+        # Tab 按钮
+        for i, btn in enumerate(self._tab_buttons):
+            if ui_element == btn:
+                self.set_active_tab(i)
+                return
+
+        # 过滤按钮
+        filter_names = ["all", "birth", "death"]
+        for i, btn in enumerate(self._filter_buttons):
+            if ui_element == btn:
+                self._log_filter = filter_names[i]
+                self._refresh_log_text()
+                return
+
+        # Copy ASM 按钮
+        if ui_element == self._copy_btn and self._copy_btn_genome is not None:
             asm = disassemble_with_labels(self._copy_btn_genome)
             text = "\n".join(asm)
             try:
-                import pyperclip
-                pyperclip.copy(text)
-            except ImportError:
                 pygame.scrap.init()
                 pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8"))
-            self._copy_btn_text = "Copied!"
-            self._copy_btn_timer = 60
+            except Exception:
+                pass
+            if self._copy_btn is not None:
+                self._copy_btn.set_text("Copied!")
 
-    def tick(self) -> None:
-        if self._copy_btn_timer > 0:
-            self._copy_btn_timer -= 1
-            if self._copy_btn_timer == 0:
-                self._copy_btn_text = ""
+    def update_stats(self, alive: int, avg_energy: float) -> None:
+        """更新统计数据。"""
+        self._population_history.append(alive)
+        self._energy_history.append(avg_energy)
 
+        if self.active_tab == 0 and self._stats_chart is not None:
+            panel_rect = self._content_container.rect
+            chart_w = panel_rect.width - 20
+            chart_h = panel_rect.height - 20
+            if chart_w > 0 and chart_h > 0:
+                chart_surface = _render_stats_chart(
+                    self._population_history,
+                    self._energy_history,
+                    chart_w,
+                    chart_h,
+                )
+                self._stats_chart.set_image(chart_surface)
+                self._stats_chart.set_dimensions((chart_w, chart_h))
 
+    def update_inspector(self, selected_org_id: int | None) -> None:
+        """更新 Inspector Tab。"""
+        if self.active_tab != 1 and selected_org_id == self._last_org_id:
+            return
+        self._last_org_id = selected_org_id
 
-class LogTab:
-    """事件日志Tab。"""
+        panel_rect = self._content_container.rect
+        panel_w = panel_rect.width
+        panel_h = panel_rect.height
 
-    def __init__(self) -> None:
-        self.entries: deque[tuple[str, tuple[int, int, int]]] = deque(maxlen=200)
-        self.font: pygame.font.Font | None = None
-        self.filter: str = "all"  # "all" | "birth" | "death"
+        if selected_org_id is None:
+            # 清除旧元素，显示占位
+            for elem in self._inspector_elements:
+                elem.kill()
+            self._inspector_elements.clear()
+            self._hex_box = None
+            self._asm_box = None
+            self._copy_btn = None
+            self._env_image = None
 
-    def init_fonts(self, font_sm: pygame.font.Font) -> None:
-        self.font = font_sm
+            lbl = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(
+                    0, panel_h // 2 - 10, panel_w, 20
+                ),
+                text="Click an organism to inspect",
+                manager=self.manager,
+                container=self._content_container,
+                object_id=pygame_gui.core.ObjectID(
+                    class_id=None, object_id="#placeholder_label"
+                ),
+            )
+            self._inspector_elements.append(lbl)
+            return
 
-    def add_event(self, event_type: str, data: dict) -> None:
+        detail = self.view_api.get_organism_detail_safe(selected_org_id)
+        if detail is None:
+            for elem in self._inspector_elements:
+                elem.kill()
+            self._inspector_elements.clear()
+            self._hex_box = None
+            self._asm_box = None
+            self._copy_btn = None
+            self._env_image = None
+
+            lbl = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(10, 10, panel_w - 20, 20),
+                text="Organism no longer alive",
+                manager=self.manager,
+                container=self._content_container,
+                object_id=pygame_gui.core.ObjectID(
+                    class_id=None, object_id="#placeholder_label"
+                ),
+            )
+            self._inspector_elements.append(lbl)
+            return
+
+        self._create_inspector_tab(panel_w, panel_h, detail)
+        self._update_tab_visibility()
+
+    def add_log_event(self, event_type: str, data: dict) -> None:
+        """添加日志事件。"""
         color = Theme.SUCCESS if event_type == "birth" else Theme.WARNING
         tick = data.get("tick", 0)
         org_id = data.get("org_id", "?")
         ex, ey = data.get("x", "?"), data.get("y", "?")
         text = f"[Tick:{tick}] [{event_type.upper()}] Org #{org_id} at ({ex},{ey})"
-        self.entries.append((text, color))
+        self._log_entries.append((text, color))
 
-    def render(self, surface: pygame.Surface, rect: tuple[int, int, int, int]) -> None:
-        assert self.font is not None
-        x, y, w, h = rect
-        pygame.draw.rect(surface, Theme.PANEL, rect)
+        # 直接追加 HTML
+        if self._log_box is not None and self.active_tab == 2:
+            r, g, b = color
+            html_entry = f'<font color="#{r:02X}{g:02X}{b:02X}">{_escape(text)}</font><br>'
+            self._log_box.set_text(self._log_box.html_text + html_entry)
+            # 自动滚到底部
+            if self._log_box.scroll_bar is not None:
+                self._log_box.scroll_bar.set_scroll_from_start_percentage(1.0)
 
-        # 过滤栏
-        fx = x + 5
-        fy = y + 5
-        for name in ["All", "Birth", "Death"]:
-            is_active = self.filter == name.lower()
-            c = Theme.HIGHLIGHT if is_active else Theme.GREYED
-            btn_w = 50
-            pygame.draw.rect(surface, c, (fx, fy, btn_w, 18), 0 if is_active else 1)
-            txt = self.font.render(name, True, Theme.TEXT if is_active else Theme.GREYED)
-            surface.blit(txt, (fx + (btn_w - txt.get_width()) // 2, fy + 1))
-            fx += btn_w + 5
-
-        # 日志文本
-        ly = fy + 25
-        line_h = 16
-        max_lines = (h - (ly - y) - 5) // line_h
-        shown = 0
-        for text, color in reversed(self.entries):
-            if self.filter != "all":
-                event_tag = f"[{self.filter.upper()}]"
+    def _refresh_log_text(self) -> None:
+        """重建日志文本框（过滤变化时）。"""
+        if self._log_box is None:
+            return
+        parts: list[str] = []
+        for text, color in self._log_entries:
+            if self._log_filter != "all":
+                event_tag = f"[{self._log_filter.upper()}]"
                 if event_tag not in text:
                     continue
-            if shown >= max_lines:
-                break
-            txt = self.font.render(text, True, color)
-            surface.blit(txt, (x + 5, ly))
-            ly += line_h
-            shown += 1
+            r, g, b = color
+            parts.append(f'<font color="#{r:02X}{g:02X}{b:02X}">{_escape(text)}</font><br>')
+        self._log_box.set_text("".join(parts))
+        if self._log_box.scroll_bar is not None:
+            self._log_box.scroll_bar.set_scroll_from_start_percentage(1.0)
 
-    def handle_click(self, mx: int, my: int, rect: tuple[int, int, int, int]) -> None:
-        x, y, _, _ = rect
-        fy = y + 5
-        if not (fy <= my <= fy + 18):
-            return
-        fx = x + 5
-        for name in ["all", "birth", "death"]:
-            btn_w = 50
-            if fx <= mx <= fx + btn_w:
-                self.filter = name
-                return
-            fx += btn_w + 5
+    def rebuild_layout(self, win_w: int, win_h: int) -> None:
+        """窗口缩放时重建右侧面板布局。"""
+        panel_w = int(win_w * RIGHT_PANEL_RATIO)
+        panel_h = win_h - TOP_BAR_H
+        panel_rect = pygame.Rect(win_w - panel_w, TOP_BAR_H, panel_w, panel_h)
+        self._panel.set_dimensions((panel_w, panel_h))
+        self._panel.set_relative_position(panel_rect.topleft)
 
+        # Tab 按钮重新排列
+        tab_w = panel_w // len(TAB_NAMES)
+        for i, btn in enumerate(self._tab_buttons):
+            btn.set_dimensions((tab_w, TAB_BAR_H))
+            btn.set_relative_position((i * tab_w, 0))
 
-class RightPanel:
-    """右侧面板：Tab栏 + 3个Tab内容区。"""
+        # 内容容器
+        content_w = panel_w
+        content_h = panel_h - TAB_BAR_H
+        self._content_container.set_dimensions((content_w, content_h))
+        self._content_container.set_relative_position((0, TAB_BAR_H))
 
-    def __init__(self, view_api: ViewAPI) -> None:
-        self.stats = StatsTab()
-        self.inspector = InspectorTab(view_api)
-        self.log = LogTab()
-        self.active_tab: int = 0
-        self.font: pygame.font.Font | None = None
-        self.font_sm: pygame.font.Font | None = None
+        # Stats 图表重建
+        if self._stats_chart is not None:
+            chart_w = content_w - 20
+            chart_h = content_h - 20
+            if chart_w > 0 and chart_h > 0:
+                chart_surface = _render_stats_chart(
+                    self._population_history,
+                    self._energy_history,
+                    chart_w,
+                    chart_h,
+                )
+                self._stats_chart.set_image(chart_surface)
+                self._stats_chart.set_dimensions((chart_w, chart_h))
+                self._stats_chart.set_relative_position((10, 10))
 
-    def init_fonts(self, font_sm: pygame.font.Font, font_md: pygame.font.Font) -> None:
-        self.font = font_md
-        self.font_sm = font_sm
-        self.stats.init_fonts(font_sm)
-        self.inspector.init_fonts(font_sm, font_md)
-        self.log.init_fonts(font_sm)
+        # Log 文本框重建
+        if self._log_box is not None:
+            log_h = content_h - 28
+            self._log_box.set_dimensions((content_w - 10, max(log_h, 1)))
+            self._log_box.set_relative_position((5, 28))
 
-    def handle_click(self, mx: int, my: int) -> None:
-        """处理右侧面板区域的鼠标点击。"""
-        px, py, pw, _ = RIGHT_PANEL
-        if mx < px or mx > px + pw:
-            return
-        # Tab栏点击
-        if py <= my <= py + TAB_BAR_H:
-            tab_w = pw // len(TAB_NAMES)
-            idx = (mx - px) // tab_w
-            if 0 <= idx < len(TAB_NAMES):
-                self.active_tab = idx
-            return
-        # Log Tab过滤栏
-        if self.active_tab == 2:
-            content_rect = self._content_rect()
-            self.log.handle_click(mx, my, content_rect)
-        # Inspector Tab按钮
-        elif self.active_tab == 1:
-            self.inspector.handle_click(mx, my)
-
-    def _content_rect(self) -> tuple[int, int, int, int]:
-        px, py, pw, ph = RIGHT_PANEL
-        return (px, py + TAB_BAR_H, pw, ph - TAB_BAR_H)
-
-    def render(
-        self,
-        surface: pygame.Surface,
-        selected_org_id: int | None,
-    ) -> None:
-        assert self.font is not None
-        px, py, pw, ph = RIGHT_PANEL
-        # 背景
-        pygame.draw.rect(surface, Theme.PANEL, RIGHT_PANEL)
-        # Tab栏
-        tab_w = pw // len(TAB_NAMES)
-        for i, name in enumerate(TAB_NAMES):
-            is_active = i == self.active_tab
-            c = Theme.HIGHLIGHT if is_active else Theme.BORDER
-            rect = (px + i * tab_w, py, tab_w, TAB_BAR_H)
-            pygame.draw.rect(surface, c, rect, 0 if is_active else 1)
-            txt = self.font.render(name, True, Theme.TEXT if is_active else Theme.GREYED)
-            surface.blit(txt, (px + i * tab_w + (tab_w - txt.get_width()) // 2, py + 6))
-        # 内容
-        content_rect = self._content_rect()
-        if self.active_tab == 0:
-            self.stats.render(surface, content_rect)
-        elif self.active_tab == 1:
-            self.inspector.render(surface, content_rect, selected_org_id)
-            self.inspector.tick()
-        elif self.active_tab == 2:
-            self.log.render(surface, content_rect)
+        # Inspector 需要在下次 update_inspector 时重建
+        # 强制刷新
+        self._last_org_id = -1

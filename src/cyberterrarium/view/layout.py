@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 class Theme:
     BG: tuple[int, int, int] = (30, 30, 30)  # #1E1E1E
@@ -15,20 +17,22 @@ class Theme:
     FONT_NAME: str = "consolas,couriernew,monospace"
 
 
-# 屏幕基准
-SCREEN_W: int = 1920
-SCREEN_H: int = 1080
+# 初始窗口基准（用于 set_mode）
+INIT_SCREEN_W: int = 1280
+INIT_SCREEN_H: int = 720
 
-# 三区域拓扑 (x, y, w, h)
-TOP_BAR: tuple[int, int, int, int] = (0, 0, 1920, 40)
-LEFT_VIEWPORT: tuple[int, int, int, int] = (0, 40, 1280, 1040)
-RIGHT_PANEL: tuple[int, int, int, int] = (1280, 40, 640, 1040)
+# 布局比例
+TOP_BAR_H: int = 40  # 顶栏高度（固定像素）
+RIGHT_PANEL_RATIO: float = 0.33  # 右面板占窗口宽度比
+TAB_BAR_H: int = 30  # Tab 栏高度（固定像素）
 
-# 右侧面板内部
-TAB_BAR_H: int = 30
+# Tab 名称
 TAB_NAMES: list[str] = ["Stats", "Inspector", "Log"]
 
 # 字号
 FONT_SM: int = 14
 FONT_MD: int = 16
 FONT_LG: int = 18
+
+# 主题 JSON 路径
+THEME_JSON_PATH: str = str(Path(__file__).parent / "theme.json")
