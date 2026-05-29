@@ -13,10 +13,11 @@ from cyberterrarium.model.config import (
     MIN_GENOME_LENGTH,
     NUTRIENT_LIFE,
     NUTRIENT_SPAWN_RATE,
+    OPCODE_SAMPLE_INTERVAL,
     REPRO_ENERGY_MULTIPLIER,
 )
-from cyberterrarium.model.isa import LEGAL_OPCODES, MNEMONIC_BY_CODE
 from cyberterrarium.model.fingerprint import compute_fingerprint
+from cyberterrarium.model.isa import LEGAL_OPCODES
 from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.organism import Organism
 from cyberterrarium.model.population import Population
@@ -46,7 +47,7 @@ class SimulationController:
         # 事件系统
         self._event_listeners: list = []
         # 基因组指令统计采样
-        self.opcode_sample_interval: int = 100  # 每 N 个 Tick 采样一次
+        self.opcode_sample_interval: int = OPCODE_SAMPLE_INTERVAL
         self._last_sample_tick: int = -999
         self._opcode_total_counts: dict[int, int] = {}   # opcode → 总条数
         self._opcode_org_counts: dict[int, int] = {}     # opcode → 使用该指令的生物数

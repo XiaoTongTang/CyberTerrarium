@@ -172,7 +172,6 @@ def _render_opcode_chart(
     # 分区：左侧 70% 绘图，右侧 30% 数据
     plot_w = int(cw * 0.7)
     data_x = cx + plot_w + 5
-    data_w = cw - plot_w - 5
 
     # 绘图
     for op in legal_opcodes:

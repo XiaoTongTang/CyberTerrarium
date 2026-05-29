@@ -43,6 +43,9 @@ NUTRIENT_SPAWN_RATE: float = 0.03  # 每个空白格在营养生成Tick生成营
 NUTRIENT_LIFE: int = 127  # 营养生命周期（Tick数），归零后变空
 ENZ_LIFE: int = 100      # 酶环境衰减寿命（Tick数），归零后变空
 
+# --- 可观测参数 ---
+OPCODE_SAMPLE_INTERVAL: int = 100  # 基因组指令统计采样周期（Tick数）
+
 # --- 突变引擎参数 ---
 MUTATION_ENABLED: bool = True
 POINT_MUTATION_RATE: float = 0.05      # 每条指令点突变概率
