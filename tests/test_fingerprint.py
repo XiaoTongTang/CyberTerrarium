@@ -1,6 +1,6 @@
 """Winnowing指纹提取模块测试"""
 
-from cyberterrarium.model.fingerprint import compute_fingerprint
+from cyberterrarium.model.fingerprint import compute_fingerprint, jaccard_similarity
 
 
 class TestComputeFingerprint:
@@ -58,3 +58,48 @@ class TestComputeFingerprint:
                             0x15, 1, 0, 0, 0x17, 0, 0, 0, 0x0B, 0, 0, 0])
         results = [compute_fingerprint(genome) for _ in range(10)]
         assert all(r == results[0] for r in results)
+
+
+# ═══════════════════════════════════════════
+# Jaccard 相似度
+# ═══════════════════════════════════════════
+
+
+class TestJaccardSimilarity:
+    def test_identical_nonempty_sets(self) -> None:
+        """两个相同的非空指纹集合 → 1.0。"""
+        fp = {1, 2, 3}
+        assert jaccard_similarity(fp, fp) == 1.0
+
+    def test_disjoint_sets(self) -> None:
+        """两个完全不相交的指纹集合 → 0.0。"""
+        assert jaccard_similarity({1, 2}, {3, 4}) == 0.0
+
+    def test_partial_overlap(self) -> None:
+        """部分重叠：intersection / union。"""
+        # {1,2,3} ∩ {2,3,4} = {2,3} → len 2
+        # {1,2,3} ∪ {2,3,4} = {1,2,3,4} → len 4
+        # 2/4 = 0.5
+        assert jaccard_similarity({1, 2, 3}, {2, 3, 4}) == 0.5
+
+    def test_one_none(self) -> None:
+        """任一指纹为 None → 0.0。"""
+        assert jaccard_similarity(None, {1, 2}) == 0.0
+        assert jaccard_similarity({1, 2}, None) == 0.0
+
+    def test_both_none(self) -> None:
+        """两个指纹均为 None → 0.0。"""
+        assert jaccard_similarity(None, None) == 0.0
+
+    def test_one_empty(self) -> None:
+        """任一指纹为空集合 → 0.0。"""
+        assert jaccard_similarity(set(), {1, 2}) == 0.0
+        assert jaccard_similarity({1, 2}, set()) == 0.0
+
+    def test_both_empty(self) -> None:
+        """两个指纹均为空集合 → 0.0。"""
+        assert jaccard_similarity(set(), set()) == 0.0
+
+    def test_single_element_overlap(self) -> None:
+        """单元素交集。"""
+        assert jaccard_similarity({42}, {42, 99}) == 0.5

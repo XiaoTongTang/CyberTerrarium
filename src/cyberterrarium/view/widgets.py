@@ -464,6 +464,7 @@ class RightPanel:
         self._hex_box: pygame_gui.elements.UITextBox | None = None
         self._asm_box: pygame_gui.elements.UITextBox | None = None
         self._copy_btn: pygame_gui.elements.UIButton | None = None
+        self._copy_json_btn: pygame_gui.elements.UIButton | None = None
         self._env_image: pygame_gui.elements.UIImage | None = None
         self._copy_btn_genome: bytearray | None = None
         self._cached_hex_lines: list[str] = []
@@ -622,7 +623,7 @@ class RightPanel:
 
         # ── Copy ASM 按钮 ──
         self._copy_btn = pygame_gui.elements.UIButton(
-            relative_rect=pygame.Rect(panel_w - 95, y, 80, 22),
+            relative_rect=pygame.Rect(panel_w - 190, y, 90, 22),
             text="Copy ASM",
             manager=self.manager,
             container=self._content_container,
@@ -631,6 +632,18 @@ class RightPanel:
             ),
         )
         self._inspector_elements.append(self._copy_btn)
+
+        # ── Copy JSON 按钮（\\n 拼接，可直接贴入 seed.json） ──
+        self._copy_json_btn = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect(panel_w - 95, y, 90, 22),
+            text='Copy JSON',
+            manager=self.manager,
+            container=self._content_container,
+            object_id=pygame_gui.core.ObjectID(
+                class_id=None, object_id="#copy_button"
+            ),
+        )
+        self._inspector_elements.append(self._copy_json_btn)
         y += 28
 
         # ── 局部环境 9×9 ──
@@ -792,6 +805,18 @@ class RightPanel:
                 pass
             if self._copy_btn is not None:
                 self._copy_btn.set_text("Copied!")
+
+        # Copy JSON 按钮（\\n 单行，可直接贴入 seed.json assembly 字段）
+        if ui_element == self._copy_json_btn and self._copy_btn_genome is not None:
+            asm = disassemble_with_labels(self._copy_btn_genome)
+            text = "\\n".join(asm)
+            try:
+                pygame.scrap.init()
+                pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8"))
+            except Exception:
+                pass
+            if self._copy_json_btn is not None:
+                self._copy_json_btn.set_text("Copied!")
 
     def update_stats(
         self,

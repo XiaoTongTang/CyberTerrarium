@@ -45,3 +45,15 @@ def compute_fingerprint(genome: bytearray | bytes) -> set[int]:
                 break
 
     return fingerprint
+
+
+def jaccard_similarity(fp_a: set[int] | None, fp_b: set[int] | None) -> float:
+    """计算两个指纹集合的 Jaccard 相似度。
+
+    任一指纹为 None 或空集时返回 0.0。
+    """
+    if fp_a is None or fp_b is None or len(fp_a) == 0 or len(fp_b) == 0:
+        return 0.0
+    intersection = len(fp_a & fp_b)
+    union = len(fp_a | fp_b)
+    return intersection / union if union > 0 else 0.0

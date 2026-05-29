@@ -23,6 +23,7 @@ from cyberterrarium.model.config import (
     MOVE_RATE,
     MOVE_SPRINT,
 )
+from cyberterrarium.model.fingerprint import jaccard_similarity
 from cyberterrarium.model.isa import (
     DATA_REG_COUNT,
     OPCODE_BY_CODE,
@@ -437,12 +438,7 @@ class VirtualMachine:
             if target is None or not target.alive:
                 continue
             f_target = target.fingerprint
-            if f_self is None or f_target is None or len(f_self) == 0 or len(f_target) == 0:
-                sim = 0.0
-            else:
-                intersection = len(f_self & f_target)
-                union = len(f_self | f_target)
-                sim = intersection / union if union > 0 else 0.0
+            sim = jaccard_similarity(f_self, f_target)
             if greater and sim > threshold:  # noqa: SIM114
                 result |= 1 << bit_idx
             elif not greater and sim < threshold:
