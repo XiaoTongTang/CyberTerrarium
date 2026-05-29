@@ -9,7 +9,7 @@ from pathlib import Path
 
 from cyberterrarium.model.config import MAX_GENOME_LENGTH, MAX_POP, MIN_GENOME_LENGTH
 from cyberterrarium.model.controller import SimulationController
-from cyberterrarium.model.fingerprint import compute_fingerprint
+from cyberterrarium.model.fingerprint import compute_fingerprint, compute_gene_signature
 from cyberterrarium.tools.assembler import AssembleError, assemble
 
 
@@ -139,6 +139,7 @@ def populate(
                 spawned += 1
                 org = controller.population.pool[org_id]
                 org.fingerprint = compute_fingerprint(org.genome)
+                org.gene_signature = compute_gene_signature(org.fingerprint)
                 controller.world.set_entity(x, y, org)
 
     controller._rebuild_alive_cache()

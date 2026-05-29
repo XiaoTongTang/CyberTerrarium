@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from cyberterrarium.model.config import ENZ_LIFE, NUTRIENT_LIFE
+from cyberterrarium.model.config import ENZ_LIFE, NUTRIENT_LIFE, TOX_LIFETIME
 from cyberterrarium.model.controller import SimulationController
 from cyberterrarium.model.population import Population
 from cyberterrarium.model.world import World
@@ -108,6 +108,7 @@ class TestPlantingReaction:
         ctrl.world.enzyme_life[3, 2] = ENZ_LIFE
         # 在3×3范围内放置毒素
         grid[1, 1] = World.TOXIN
+        ctrl.world.toxin_life[1, 1] = TOX_LIFETIME
 
         ctrl.execute_phase_1()
 

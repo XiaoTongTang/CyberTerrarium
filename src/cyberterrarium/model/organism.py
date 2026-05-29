@@ -19,6 +19,7 @@ class Organism:
     age: int              # 存活Tick数
     genome: bytearray     # 基因代码段
     fingerprint: set[int] | None = None  # Winnowing基因指纹缓存
+    gene_signature: int = 0  # 8-bit基因签名（指纹哈希和 & 0xFF）
 
     # 寄存器索引常量（从 isa.REG_TABLE 派生，唯一定义源）
     R0: int = REG_BY_NAME["R0"].index

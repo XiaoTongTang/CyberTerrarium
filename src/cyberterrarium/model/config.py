@@ -42,6 +42,7 @@ WORLD_HEIGHT: int = 100
 NUTRIENT_SPAWN_RATE: float = 0.03  # 每个空白格在营养生成Tick生成营养的概率
 NUTRIENT_LIFE: int = 127  # 营养生命周期（Tick数），归零后变空
 ENZ_LIFE: int = 100      # 酶环境衰减寿命（Tick数），归零后变空
+TOX_LIFETIME: int = 100      # 毒素自然衰减周期（Tick数），归零后变空
 
 # --- 可观测参数 ---
 OPCODE_SAMPLE_INTERVAL: int = 100  # 基因组指令统计采样周期（Tick数）

@@ -22,6 +22,8 @@ from cyberterrarium.model.config import (
     MOVE_BASE,
     MOVE_RATE,
     MOVE_SPRINT,
+    NUTRIENT_LIFE,
+    TOX_LIFETIME,
 )
 from cyberterrarium.model.fingerprint import jaccard_similarity
 from cyberterrarium.model.isa import (
@@ -183,6 +185,9 @@ class VirtualMachine:
             world.signal_life[ty % world.h, tx % world.w] = 50
         elif material == World.ENZYME:
             world.enzyme_life[ty % world.h, tx % world.w] = ENZ_LIFE
+        elif material == World.TOXIN:
+            world.toxin_life[ty % world.h, tx % world.w] = TOX_LIFETIME
+            world.toxin_signature[ty % world.h, tx % world.w] = org.gene_signature
         org.regs[Organism.INV] = World.EMPTY
 
     def _op_move_x(
@@ -226,8 +231,26 @@ class VirtualMachine:
     ) -> None:
         cell = world.get_material(x, y)
         if cell == World.TOXIN:
-            org.energy -= C_TOUCH_TOX
-            world.set_material(x, y, World.EMPTY)
+            toxin_sig = world.toxin_signature[y % world.h, x % world.w]
+            if toxin_sig == 0 or org.gene_signature != toxin_sig:
+                org.energy -= C_TOUCH_TOX
+            self._corrosion_reaction(x, y, world)
+
+    def _corrosion_reaction(
+        self, x: int, y: int, world: World
+    ) -> None:
+        world.set_material(x, y, World.EMPTY)
+        world.toxin_life[y % world.h, x % world.w] = 0
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx = (x + dx) % world.w
+                ny = (y + dy) % world.h
+                if world.get_material(nx, ny) == World.TOXIN:
+                    world.set_material(nx, ny, World.NUTRIENT)
+                    world.nutrient_life[ny, nx] = NUTRIENT_LIFE
+                    world.toxin_life[ny, nx] = 0
 
     def _op_cmp(
         self, org: Organism, p1: int, p2: int, _p3: int, _w: World, _pop: Population
@@ -381,6 +404,9 @@ class VirtualMachine:
                     world.signal_life[ty % world.h, tx % world.w] = 50
                 elif p2 == World.ENZYME:
                     world.enzyme_life[ty % world.h, tx % world.w] = ENZ_LIFE
+                elif p2 == World.TOXIN:
+                    world.toxin_life[ty % world.h, tx % world.w] = TOX_LIFETIME
+                    world.toxin_signature[ty % world.h, tx % world.w] = org.gene_signature
 
     # ── 寄存器操作指令 ──
 

@@ -47,6 +47,16 @@ def compute_fingerprint(genome: bytearray | bytes) -> set[int]:
     return fingerprint
 
 
+def compute_gene_signature(fp: set[int] | None) -> int:
+    """从指纹集合推导 8-bit 基因签名。
+
+    公式：sum(fingerprint) & 0xFF。None 或空集返回 0。
+    """
+    if fp is None or len(fp) == 0:
+        return 0
+    return sum(fp) & 0xFF
+
+
 def jaccard_similarity(fp_a: set[int] | None, fp_b: set[int] | None) -> float:
     """计算两个指纹集合的 Jaccard 相似度。
 

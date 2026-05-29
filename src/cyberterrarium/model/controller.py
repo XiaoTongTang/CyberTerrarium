@@ -16,7 +16,7 @@ from cyberterrarium.model.config import (
     OPCODE_SAMPLE_INTERVAL,
     REPRO_ENERGY_MULTIPLIER,
 )
-from cyberterrarium.model.fingerprint import compute_fingerprint
+from cyberterrarium.model.fingerprint import compute_fingerprint, compute_gene_signature
 from cyberterrarium.model.isa import LEGAL_OPCODES
 from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.organism import Organism
@@ -100,6 +100,12 @@ class SimulationController:
         self.world.enzyme_life[emask] -= 1
         e_expired = (self.world.enzyme_life == 0) & (grid == World.ENZYME)
         grid[e_expired] = World.EMPTY
+
+        # Step 3.5: 毒素衰减
+        tmask = self.world.toxin_life > 0
+        self.world.toxin_life[tmask] -= 1
+        t_expired = (self.world.toxin_life == 0) & (grid == World.TOXIN)
+        grid[t_expired] = World.EMPTY
 
         # Step 4: 营养生成
         self.current_tick += 1
@@ -187,6 +193,7 @@ class SimulationController:
             if org_id >= 0:
                 org = self.population.pool[org_id]
                 org.fingerprint = compute_fingerprint(org.genome)
+                org.gene_signature = compute_gene_signature(org.fingerprint)
                 self.world.set_entity(req["x"], req["y"], org)
                 self._emit_event("birth", {
                     "tick": self.current_tick,
@@ -269,6 +276,8 @@ class SimulationController:
             "world_signal": self.world.signal_life.copy(),
             "world_nutrient": self.world.nutrient_life.copy(),
             "world_enzyme": self.world.enzyme_life.copy(),
+            "world_toxin": self.world.toxin_life.copy(),
+            "world_toxin_sig": self.world.toxin_signature.copy(),
             "organisms": [],
         }
         for org in self.population.pool:
@@ -282,7 +291,8 @@ class SimulationController:
                         "age": org.age,
                         "genome": bytearray(org.genome),
                         "fingerprint": list(org.fingerprint)
-                            if org.fingerprint is not None else None
+                            if org.fingerprint is not None else None,
+                        "gene_signature": org.gene_signature,
                     }
                 )
         return snapshot
@@ -294,6 +304,10 @@ class SimulationController:
         self.world.signal_life = snapshot["world_signal"].copy()
         self.world.nutrient_life = snapshot["world_nutrient"].copy()
         self.world.enzyme_life = snapshot["world_enzyme"].copy()
+        self.world.toxin_life = snapshot.get("world_toxin",
+            np.zeros((self.world.h, self.world.w), dtype=np.int16)).copy()
+        self.world.toxin_signature = snapshot.get("world_toxin_sig",
+            np.zeros((self.world.h, self.world.w), dtype=np.uint8)).copy()
         # 重建实体网格
         self.world.entity_grid = [
             [None for _ in range(self.world.w)] for _ in range(self.world.h)
@@ -315,6 +329,7 @@ class SimulationController:
                 org = self.population.pool[org_id]
                 fp_data = org_data.get("fingerprint")
                 org.fingerprint = set(fp_data) if fp_data is not None else None
+                org.gene_signature = org_data.get("gene_signature", 0)
                 self.world.set_entity(x, y, org)
 
     @staticmethod
