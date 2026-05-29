@@ -14,6 +14,7 @@ from cyberterrarium.model.config import (
     NUTRIENT_LIFE,
     NUTRIENT_SPAWN_RATE,
     OPCODE_SAMPLE_INTERVAL,
+    PLANTING_REACTION_INTERVAL,
     REPRO_ENERGY_MULTIPLIER,
 )
 from cyberterrarium.model.fingerprint import compute_fingerprint, compute_gene_signature
@@ -62,26 +63,27 @@ class SimulationController:
         """物理与环境阶段：种植反应 + 信号衰减 + 营养衰减 + 酶衰减 + 营养生成"""
         grid = self.world.grid
 
-        # Step 0: 种植反应
-        nutrient_mask = grid == World.NUTRIENT
-        enzyme_mask = grid == World.ENZYME
-        nutrient_influence = self._dilate_4(nutrient_mask)
-        triggered_enzymes = enzyme_mask & nutrient_influence
+        # Step 0: 种植反应（按可配置间隔结算）
+        if self.current_tick % PLANTING_REACTION_INTERVAL == 0:
+            nutrient_mask = grid == World.NUTRIENT
+            enzyme_mask = grid == World.ENZYME
+            nutrient_influence = self._dilate_4(nutrient_mask)
+            triggered_enzymes = enzyme_mask & nutrient_influence
 
-        if triggered_enzymes.any():
-            enzyme_influence = self._dilate_4(triggered_enzymes)
-            trigger_nutrients = nutrient_mask & enzyme_influence
-            new_nutrient_area = self._dilate_3x3(trigger_nutrients)
-            grid[triggered_enzymes] = World.EMPTY
-            self.world.enzyme_life[triggered_enzymes] = 0
-            can_overwrite = (
-                (grid == World.EMPTY)
-                | (grid == World.NUTRIENT)
-                | (grid == World.ENZYME)
-            )
-            write_mask = new_nutrient_area & can_overwrite
-            grid[write_mask] = World.NUTRIENT
-            self.world.nutrient_life[write_mask] = NUTRIENT_LIFE
+            if triggered_enzymes.any():
+                enzyme_influence = self._dilate_4(triggered_enzymes)
+                trigger_nutrients = nutrient_mask & enzyme_influence
+                new_nutrient_area = self._dilate_3x3(trigger_nutrients)
+                grid[triggered_enzymes] = World.EMPTY
+                self.world.enzyme_life[triggered_enzymes] = 0
+                can_overwrite = (
+                    (grid == World.EMPTY)
+                    | (grid == World.NUTRIENT)
+                    | (grid == World.ENZYME)
+                )
+                write_mask = new_nutrient_area & can_overwrite
+                grid[write_mask] = World.NUTRIENT
+                self.world.nutrient_life[write_mask] = NUTRIENT_LIFE
 
         # Step 1: 信号衰减
         mask = self.world.signal_life > 0

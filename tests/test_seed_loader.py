@@ -45,10 +45,18 @@ class TestLoadSeedConfig:
         with pytest.raises(SeedConfigError, match="species"):
             load_seed_config(path)
 
-    # 场景：count字段为0时报错
-    def test_count_zero(self, tmp_path):
+    # 场景：count字段为0时允许通过（保留基因组但不投放生物）
+    def test_count_zero_allowed(self, tmp_path):
         path = _write_json(
-            {"species": [{"name": "A", "assembly": "NOP", "count": 0}]}, tmp_path
+            {"species": [{"name": "A", "assembly": "NOP\nNOP\nNOP\nNOP", "count": 0}]}, tmp_path
+        )
+        config = load_seed_config(path)
+        assert config["species"][0]["count"] == 0
+
+    # 场景：count为负数时报错
+    def test_count_negative_errors(self, tmp_path):
+        path = _write_json(
+            {"species": [{"name": "A", "assembly": "NOP", "count": -1}]}, tmp_path
         )
         with pytest.raises(SeedConfigError, match="count"):
             load_seed_config(path)
@@ -151,6 +159,18 @@ class TestPopulate:
         pop = Population()
         ctrl = SimulationController(world, pop)
         count = populate(ctrl, [])
+        assert count == 0
+        assert pop.alive_count == 0
+
+    # 场景：count=0时不投放任何生物
+    def test_count_zero_no_spawn(self):
+        world = World(200, 200)
+        pop = Population()
+        ctrl = SimulationController(world, pop)
+        count = populate(
+            ctrl,
+            [{"name": "G", "assembly": "MOV R0, 1\nMOVE_X R0\nEAT\nJMP -2", "count": 0}],
+        )
         assert count == 0
         assert pop.alive_count == 0
 

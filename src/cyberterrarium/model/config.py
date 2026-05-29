@@ -21,8 +21,8 @@ C_DAMAGE_PER_HIT: int = 55   # 每命中一格目标生物损失的能量
 C_LEECH_PER_HIT: int = 50    # 每命中一格攻击者恢复的能量
 
 # --- 位图排放参数 ---
-C_EMIT_ENZ: int = 5          # 排放一格酶的基础消耗
-C_EMIT_TOX: int = 2          # 排放一格毒素的基础消耗
+C_EMIT_ENZ: int = 20          # 排放一格酶的基础消耗
+C_EMIT_TOX: int = 0          # 排放一格毒素的基础消耗
 C_EMIT_SIG: float = 1      # 排放一格信号的基础消耗
 
 # --- 生物扫描参数 ---
@@ -37,12 +37,13 @@ AGE_LIMIT: int = 1000      # 最大年龄（Tick数）
 MAX_POP: int = 1000        # 最大人口
 
 # --- 世界参数 ---
-WORLD_WIDTH: int = 100
-WORLD_HEIGHT: int = 100
+WORLD_WIDTH: int = 150
+WORLD_HEIGHT: int = 150
 NUTRIENT_SPAWN_RATE: float = 0.03  # 每个空白格在营养生成Tick生成营养的概率
+PLANTING_REACTION_INTERVAL: int = 4  # 种植反应结算间隔（Tick数），1=每Tick结算
 NUTRIENT_LIFE: int = 127  # 营养生命周期（Tick数），归零后变空
 ENZ_LIFE: int = 100      # 酶环境衰减寿命（Tick数），归零后变空
-TOX_LIFETIME: int = 100      # 毒素自然衰减周期（Tick数），归零后变空
+TOX_LIFETIME: int = 400      # 毒素自然衰减周期（Tick数），归零后变空
 
 # --- 可观测参数 ---
 OPCODE_SAMPLE_INTERVAL: int = 100  # 基因组指令统计采样周期（Tick数）

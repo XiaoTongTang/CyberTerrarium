@@ -37,8 +37,8 @@ def load_seed_config(path: str | Path) -> dict:
             raise SeedConfigError(f"species[{i}]: missing 'assembly'")
         if "count" not in sp:
             raise SeedConfigError(f"species[{i}]: missing 'count'")
-        if not isinstance(sp["count"], int) or sp["count"] < 1:
-            raise SeedConfigError(f"species[{i}]: 'count' must be an integer >= 1")
+        if not isinstance(sp["count"], int) or sp["count"] < 0:
+            raise SeedConfigError(f"species[{i}]: 'count' must be an integer >= 0")
         total_count += sp["count"]
 
     if total_count > MAX_POP:
