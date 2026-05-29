@@ -248,7 +248,9 @@ class CyberTerrariumUI:
         alive = stats["alive"]
         energies = self.view_api.get_organism_energies_array()
         avg_e = float(np.mean(energies)) if len(energies) > 0 else 0.0
-        self.right_panel.update_stats(alive, avg_e)
+        opcode_total = self.view_api.get_opcode_total_counts()
+        opcode_org = self.view_api.get_opcode_org_counts()
+        self.right_panel.update_stats(alive, avg_e, opcode_total, opcode_org)
 
         # 更新顶栏信息
         self.top_bar.update_info(

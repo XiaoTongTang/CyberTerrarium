@@ -36,6 +36,14 @@ class ViewAPI:
             "cap": self.ctrl.population.max_cap,
         }
 
+    def get_opcode_total_counts(self) -> dict[int, int]:
+        """获取最近一次采样的基因组指令频次快照。"""
+        return self.ctrl._opcode_total_counts
+
+    def get_opcode_org_counts(self) -> dict[int, int]:
+        """获取最近一次采样的基因组指令覆盖广度快照。"""
+        return self.ctrl._opcode_org_counts
+
     def get_organism_detail_safe(self, org_id: int) -> dict | None:
         """获取单个生物的深拷贝快照（调试专用，安全隔离）。"""
         org = self.ctrl.population.pool[org_id]

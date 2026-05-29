@@ -15,6 +15,7 @@ from cyberterrarium.model.config import (
     NUTRIENT_SPAWN_RATE,
     REPRO_ENERGY_MULTIPLIER,
 )
+from cyberterrarium.model.isa import LEGAL_OPCODES, MNEMONIC_BY_CODE
 from cyberterrarium.model.fingerprint import compute_fingerprint
 from cyberterrarium.model.mutation import apply_mutations
 from cyberterrarium.model.organism import Organism
@@ -44,6 +45,11 @@ class SimulationController:
         self._cached_alive_ids: np.ndarray = np.empty(0, dtype=np.int32)
         # 事件系统
         self._event_listeners: list = []
+        # 基因组指令统计采样
+        self.opcode_sample_interval: int = 100  # 每 N 个 Tick 采样一次
+        self._last_sample_tick: int = -999
+        self._opcode_total_counts: dict[int, int] = {}   # opcode → 总条数
+        self._opcode_org_counts: dict[int, int] = {}     # opcode → 使用该指令的生物数
 
     def run_one_full_tick(self) -> None:
         self.execute_phase_1()
@@ -189,6 +195,7 @@ class SimulationController:
                 })
         self._spawn_queue = []
         self._rebuild_alive_cache()
+        self._maybe_sample_opcode_stats()
 
     def _kill_and_corpse(self, org: Organism) -> None:
         org.alive = False
@@ -203,6 +210,28 @@ class SimulationController:
             "y": org.regs[Organism.DP_Y],
         })
         self.population.recycle(org.org_id)
+
+    def _maybe_sample_opcode_stats(self) -> None:
+        """按采样周期扫描存活种群基因组，快照指令频次与覆盖广度。"""
+        if self.current_tick - self._last_sample_tick < self.opcode_sample_interval:
+            return
+        self._last_sample_tick = self.current_tick
+        total: dict[int, int] = {}
+        orgs: dict[int, int] = {}
+        for op in LEGAL_OPCODES:
+            total[op] = 0
+            orgs[op] = 0
+        for org in self.population.get_alive_list():
+            seen: set[int] = set()
+            for i in range(0, len(org.genome), 4):
+                op = org.genome[i]
+                if op in total:
+                    total[op] += 1
+                    seen.add(op)
+            for op in seen:
+                orgs[op] += 1
+        self._opcode_total_counts = total
+        self._opcode_org_counts = orgs
 
     def _rebuild_alive_cache(self) -> None:
         alive = self.population.get_alive_list()

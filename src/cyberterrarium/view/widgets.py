@@ -99,32 +99,120 @@ def _render_env_grid(
 def _render_stats_chart(
     population_history: deque[int],
     energy_history: deque[float],
+    opcode_total_history: dict[int, deque[int]] | None,
+    opcode_org_history: dict[int, deque[int]] | None,
+    opcode_colors: dict[int, tuple[int, int, int]] | None,
+    mnemonic_by_code: dict[int, str] | None,
+    legal_opcodes: list[int] | None,
+    sub_index: int,
     w: int,
     h: int,
 ) -> pygame.Surface:
-    """渲染统计折线图到 Surface。"""
+    """渲染统计折线图到 Surface，按 sub_index 只渲染选定的图表。"""
     surface = pygame.Surface((w, h))
     surface.fill((20, 20, 25))
+    font = pygame.font.SysFont("consolas,couriernew,monospace", 12)
 
-    # 图例
-    font = pygame.font.SysFont("consolas,couriernew,monospace", 14)
-    pygame.draw.rect(surface, Theme.TEXT, (10, 7, 10, 10))
-    surface.blit(font.render("Population", True, Theme.TEXT), (24, 5))
-    pygame.draw.rect(surface, (200, 200, 60), (120, 7, 10, 10))
-    surface.blit(font.render("Avg Energy", True, (200, 200, 60)), (134, 5))
-
-    # 绘图区
     chart_x = 10
-    chart_y = 30
+    chart_y = 22
     chart_w = w - 20
-    chart_h = h - 40
-    pygame.draw.rect(surface, (20, 20, 25), (chart_x, chart_y, chart_w, chart_h))
+    chart_h = h - 30
 
-    _draw_line(surface, population_history, chart_x, chart_y, chart_w, chart_h, Theme.TEXT)
-    _draw_line(
-        surface, energy_history, chart_x, chart_y, chart_w, chart_h, (200, 200, 60)
+    has_opcode = (
+        opcode_total_history is not None
+        and opcode_org_history is not None
+        and opcode_colors is not None
+        and mnemonic_by_code is not None
+        and legal_opcodes is not None
     )
+
+    if sub_index == 0:
+        # ── 图表1：种群与能量 ──
+        pygame.draw.rect(surface, Theme.TEXT, (10, 7, 10, 10))
+        surface.blit(font.render("Population", True, Theme.TEXT), (24, 5))
+        pygame.draw.rect(surface, (200, 200, 60), (120, 7, 10, 10))
+        surface.blit(font.render("Avg Energy", True, (200, 200, 60)), (134, 5))
+        _draw_line(surface, population_history, chart_x, chart_y, chart_w, chart_h, Theme.TEXT)
+        _draw_line(
+            surface, energy_history, chart_x, chart_y, chart_w, chart_h, (200, 200, 60)
+        )
+
+    elif sub_index == 1 and has_opcode:
+        # ── 图表2：基因组指令频次 ──
+        surface.blit(font.render("Opcode Total Count", True, Theme.TEXT), (10, 5))
+        _render_opcode_chart(
+            surface, font, opcode_total_history, opcode_colors, mnemonic_by_code,
+            legal_opcodes, chart_x, chart_y, chart_w, chart_h,
+        )
+
+    elif sub_index == 2 and has_opcode:
+        # ── 图表3：基因组指令覆盖广度 ──
+        surface.blit(font.render("Opcode Organism Count", True, Theme.TEXT), (10, 5))
+        _render_opcode_chart(
+            surface, font, opcode_org_history, opcode_colors, mnemonic_by_code,
+            legal_opcodes, chart_x, chart_y, chart_w, chart_h,
+        )
+
     return surface
+
+
+def _render_opcode_chart(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    history: dict[int, deque[int]],
+    colors: dict[int, tuple[int, int, int]],
+    mnemonic_by_code: dict[int, str],
+    legal_opcodes: list[int],
+    cx: int,
+    cy: int,
+    cw: int,
+    ch: int,
+) -> None:
+    """在指定区域绘制指令统计折线图 + 数据区。"""
+    # 分区：左侧 70% 绘图，右侧 30% 数据
+    plot_w = int(cw * 0.7)
+    data_x = cx + plot_w + 5
+    data_w = cw - plot_w - 5
+
+    # 绘图
+    for op in legal_opcodes:
+        d = history.get(op)
+        if d is not None and len(d) >= 2:
+            _draw_line(surface, d, cx, cy, plot_w, ch, colors[op])
+
+    # 数据区
+    line_h = 14
+    max_lines = max(ch // line_h, 1)
+    shown = legal_opcodes[:max_lines]
+    for i, op in enumerate(shown):
+        d = history.get(op)
+        val = d[-1] if d and len(d) > 0 else 0
+        name = mnemonic_by_code.get(op, f"0x{op:02X}")
+        color = colors.get(op, Theme.TEXT)
+        ly = cy + i * line_h
+        pygame.draw.rect(surface, color, (data_x, ly + 2, 8, 8))
+        txt = f"{name}:{val}"
+        surface.blit(font.render(txt, True, color), (data_x + 10, ly))
+
+
+def _hsv_to_rgb(h: int, s: float, v: float) -> tuple[int, int, int]:
+    """HSV → RGB，h 为 0-359，s/v 为 0.0-1.0。"""
+    c = v * s
+    x = c * (1 - abs((h / 60) % 2 - 1))
+    m = v - c
+    if h < 60:
+        r, g, b = c, x, 0
+    elif h < 120:
+        r, g, b = x, c, 0
+    elif h < 180:
+        r, g, b = 0, c, x
+    elif h < 240:
+        r, g, b = 0, x, c
+    elif h < 300:
+        r, g, b = x, 0, c
+    else:
+        r, g, b = c, 0, x
+    return (int((r + m) * 255), int((g + m) * 255), int((b + m) * 255))
 
 
 def _draw_line(
@@ -304,6 +392,21 @@ class RightPanel:
         # 统计数据
         self._population_history: deque[int] = deque(maxlen=1000)
         self._energy_history: deque[float] = deque(maxlen=1000)
+        # 指令统计历史
+        from cyberterrarium.model.isa import LEGAL_OPCODES, MNEMONIC_BY_CODE
+        self._legal_opcodes: list[int] = LEGAL_OPCODES
+        self._mnemonic_by_code: dict[int, str] = MNEMONIC_BY_CODE
+        self._opcode_colors: dict[int, tuple[int, int, int]] = {}
+        n = len(LEGAL_OPCODES)
+        for i, op in enumerate(LEGAL_OPCODES):
+            hue = int(i * 360 / max(n, 1)) % 360
+            self._opcode_colors[op] = _hsv_to_rgb(hue, 0.8, 0.9)
+        self._opcode_total_history: dict[int, deque[int]] = {
+            op: deque(maxlen=1000) for op in LEGAL_OPCODES
+        }
+        self._opcode_org_history: dict[int, deque[int]] = {
+            op: deque(maxlen=1000) for op in LEGAL_OPCODES
+        }
 
         # 日志数据
         self._log_entries: deque[tuple[str, tuple[int, int, int]]] = deque(maxlen=200)
@@ -347,6 +450,9 @@ class RightPanel:
 
         # ── Stats Tab 内容 ──
         self._stats_chart: pygame_gui.elements.UIImage | None = None
+        self._stats_sub_index: int = 0  # 0=种群能量, 1=指令频次, 2=指令覆盖广度
+        self._stats_sub_names: list[str] = ["Pop/Energy", "Opcode Freq", "Opcode Range"]
+        self._stats_sub_buttons: list[pygame_gui.elements.UIButton] = []
         self._create_stats_tab(panel_w, panel_h)
 
         # ── Inspector Tab 内容 ──
@@ -378,18 +484,48 @@ class RightPanel:
 
     def _create_stats_tab(self, panel_w: int, panel_h: int) -> None:
         """创建 Stats Tab 内容。"""
+        # 图表子选择按钮行
+        btn_w = panel_w // len(self._stats_sub_names)
+        for i, name in enumerate(self._stats_sub_names):
+            btn = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect(i * btn_w, 0, btn_w, 24),
+                text=name,
+                manager=self.manager,
+                container=self._content_container,
+                object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#tab_button"),
+            )
+            self._stats_sub_buttons.append(btn)
+        self._update_stats_sub_button_style()
+
         chart_w = panel_w - 20
-        chart_h = panel_h - TAB_BAR_H - 20
+        chart_h = panel_h - TAB_BAR_H - 54  # 54 = 按钮行24 + 间距30
         chart_surface = _render_stats_chart(
-            self._population_history, self._energy_history, max(chart_w, 1), max(chart_h, 1)
+            self._population_history,
+            self._energy_history,
+            self._opcode_total_history,
+            self._opcode_org_history,
+            self._opcode_colors,
+            self._mnemonic_by_code,
+            self._legal_opcodes,
+            self._stats_sub_index,
+            max(chart_w, 1),
+            max(chart_h, 1),
         )
         self._stats_chart = pygame_gui.elements.UIImage(
-            relative_rect=pygame.Rect(10, 10, chart_w, chart_h),
+            relative_rect=pygame.Rect(10, 30, chart_w, chart_h),
             image_surface=chart_surface,
             manager=self.manager,
             container=self._content_container,
             object_id=pygame_gui.core.ObjectID(class_id=None, object_id="#stats_chart"),
         )
+
+    def _update_stats_sub_button_style(self) -> None:
+        """高亮当前选中的子图表按钮。"""
+        for i, btn in enumerate(self._stats_sub_buttons):
+            if i == self._stats_sub_index:
+                btn.set_text(f"[{self._stats_sub_names[i]}]")
+            else:
+                btn.set_text(self._stats_sub_names[i])
 
     def _build_inspector_widgets(self, panel_w: int, panel_h: int) -> None:
         """一次性创建 Inspector 全部 UI 组件（占位内容），后续用增量更新。"""
@@ -595,8 +731,11 @@ class RightPanel:
     def _update_tab_visibility(self) -> None:
         """根据当前 Tab 显示/隐藏内容。"""
         # Stats
+        is_stats = self.active_tab == 0
         if self._stats_chart is not None:
-            self._stats_chart.visible = self.active_tab == 0
+            self._stats_chart.visible = is_stats
+        for btn in self._stats_sub_buttons:
+            btn.visible = is_stats
 
         # Inspector: 占位标签 vs 详情组件互斥显示
         is_inspector = self.active_tab == 1
@@ -628,6 +767,13 @@ class RightPanel:
                 self.set_active_tab(i)
                 return
 
+        # Stats 子图表按钮
+        for i, btn in enumerate(self._stats_sub_buttons):
+            if ui_element == btn:
+                self._stats_sub_index = i
+                self._update_stats_sub_button_style()
+                return
+
         # 过滤按钮
         filter_names = ["all", "birth", "death"]
         for i, btn in enumerate(self._filter_buttons):
@@ -648,19 +794,37 @@ class RightPanel:
             if self._copy_btn is not None:
                 self._copy_btn.set_text("Copied!")
 
-    def update_stats(self, alive: int, avg_energy: float) -> None:
+    def update_stats(
+        self,
+        alive: int,
+        avg_energy: float,
+        opcode_total: dict[int, int] | None = None,
+        opcode_org: dict[int, int] | None = None,
+    ) -> None:
         """更新统计数据。"""
         self._population_history.append(alive)
         self._energy_history.append(avg_energy)
 
+        # 指令统计：追加历史
+        if opcode_total is not None and opcode_org is not None:
+            for op in self._legal_opcodes:
+                self._opcode_total_history[op].append(opcode_total.get(op, 0))
+                self._opcode_org_history[op].append(opcode_org.get(op, 0))
+
         if self.active_tab == 0 and self._stats_chart is not None:
             panel_rect = self._content_container.rect
             chart_w = panel_rect.width - 20
-            chart_h = panel_rect.height - 20
+            chart_h = panel_rect.height - 54  # 54 = 按钮行24 + 间距30
             if chart_w > 0 and chart_h > 0:
                 chart_surface = _render_stats_chart(
                     self._population_history,
                     self._energy_history,
+                    self._opcode_total_history,
+                    self._opcode_org_history,
+                    self._opcode_colors,
+                    self._mnemonic_by_code,
+                    self._legal_opcodes,
+                    self._stats_sub_index,
                     chart_w,
                     chart_h,
                 )
@@ -771,17 +935,29 @@ class RightPanel:
         # Stats 图表重建
         if self._stats_chart is not None:
             chart_w = content_w - 20
-            chart_h = content_h - 20
+            chart_h = content_h - 54  # 54 = 按钮行24 + 间距30
             if chart_w > 0 and chart_h > 0:
                 chart_surface = _render_stats_chart(
                     self._population_history,
                     self._energy_history,
+                    self._opcode_total_history,
+                    self._opcode_org_history,
+                    self._opcode_colors,
+                    self._mnemonic_by_code,
+                    self._legal_opcodes,
+                    self._stats_sub_index,
                     chart_w,
                     chart_h,
                 )
                 self._stats_chart.set_image(chart_surface)
                 self._stats_chart.set_dimensions((chart_w, chart_h))
-                self._stats_chart.set_relative_position((10, 10))
+                self._stats_chart.set_relative_position((10, 30))
+
+        # Stats 子按钮重建
+        btn_w = content_w // len(self._stats_sub_names)
+        for i, btn in enumerate(self._stats_sub_buttons):
+            btn.set_dimensions((btn_w, 24))
+            btn.set_relative_position((i * btn_w, 0))
 
         # Log 文本框重建
         if self._log_box is not None:
